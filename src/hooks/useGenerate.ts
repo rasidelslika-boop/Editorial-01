@@ -87,7 +87,7 @@ export function useGenerate() {
           filter: img.filter,
           focus: img.focus,
           upscaled: opts.quality === "hq" ? true : undefined,
-          tag: opts.quality === "hq" ? "High-res render · 1536" : img.fallback ? "Curated stand-in" : undefined,
+          tag: opts.quality === "hq" ? "High-res render" : img.fallback ? "Curated stand-in" : undefined,
           standIn: img.fallback || undefined,
           baseId: base?.id,
           createdAt: now + i,

@@ -83,25 +83,28 @@ VITE_BFL_API_KEY=...
 VITE_CUSTOM_ENDPOINT=https://your-api.example.com/generate
 ```
 
-### Qwen-Image & Wanx 2.1 (DashScope)
+### Qwen-Image 3.0, Wan 2.7 & Z-Image (DashScope)
 
-`Qwen-Max` / `Qwen 3.x` are text models — image generation on the Qwen platform
-is served by **Qwen-Image** and **Wanx 2.1** (通义万相). EditorialAI wires both
-through DashScope's OpenAI-compatible endpoint:
+`Qwen-Max` / `Qwen 3.x` are **text** models — image generation on the Qwen
+platform is served by **Qwen-Image 3.0**, **Wan 2.7** (通义万相) and
+**Z-Image Turbo**. All three are enabled by default in the Singapore region —
+verify in the [Model Experience Center](https://modelstudio.console.alibabacloud.com/?tab=dashboard#/efm/model_experience_center/vision?currentTab=imageGenerate).
+`src/lib/api/dashscope.ts` implements the current native API contracts:
 
-| Studio engine             | DashScope model            | Notes                         |
-| ------------------------- | -------------------------- | ----------------------------- |
-| Qwen-Image (DashScope)    | `qwen-image`               | Best text & editorial detail  |
-| Wanx 2.1 Turbo (DashScope)| `wanx2.1-t2i-turbo`        | Fastest; upscale promotes to Plus |
-| Wanx 2.1 Plus (DashScope) | `wanx2.1-t2i-plus`         | Highest Wanx quality          |
-| Flux Pro / Dev, SD 3.5    | `flux-merged` / `flux-dev` / `stable-diffusion-3.5-large` | same key |
+| Studio engine             | DashScope models tried (in order)                       | Route                                            |
+| ------------------------- | ------------------------------------------------------- | ------------------------------------------------ |
+| Qwen-Image 3.0 Pro        | `qwen-image-3.0-pro` → `qwen-image-3.0` → `qwen-image-plus` → `qwen-image` | sync `multimodal-generation/generation` |
+| Wan 2.7 Pro               | `wan2.7-image-pro` → `wan2.6-image` → `wanx2.1-t2i-plus` | async `image-generation/generation` + task polling |
+| Z-Image Turbo (fast)      | `z-image-turbo` → `wan2.7-image` → `wanx2.1-t2i-turbo`  | OpenAI-compatible `/images/generations`, then async |
+| Flux Pro / Dev, SD 3.5    | `flux-merged` / `flux-dev` / `stable-diffusion-3.5-large` | OpenAI-compatible (same key)                   |
 
-**Browser CORS:** DashScope does not send CORS headers, so a browser calling it
-directly is blocked — the studio detects this and automatically re-renders the
-plate with the free studio engine (you'll see an info toast). To shoot with your
-DashScope key:
+The provider searches workspace gateway → international endpoint, caches the
+winning model + route for 12 h, and understands per-model size rules
+(Qwen fixed presets, Wan 2.7 `thinking_mode`, legacy Wanx sizes).
 
-1. Deploy the ready-made relay in [`worker/dashscope-proxy.js`](worker/dashscope-proxy.js):
+**Browser CORS:** DashScope sends no CORS headers, so a purely client-side
+call is blocked — the studio then serves a curated stand-in plate and explains
+why. To render with your key from the browser, deploy the relay:
 
 ```bash
 npm i -g wrangler && wrangler login
@@ -109,42 +112,25 @@ wrangler deploy worker/dashscope-proxy.js --name editorial-ai-dashscope
 ```
 
 then set `VITE_DASHSCOPE_RELAY=https://editorial-ai-dashscope.<you>.workers.dev`
-in `.env.local` and rebuild.
-
-2. Generate server-side (the provider is a plain `fetch` — lift it into an API
-   route) so the key never ships to the browser. This is the recommended setup
+in `.env.local` and rebuild. For production, generate server-side (the provider
+is plain `fetch` — lift it into an API route) so the key never ships to the
+browser.
 
 **Keep in mind:**
 
-- The Qwen provider is self-healing: it tries the OpenAI-compatible endpoint,
-  and on a 404/400 probes the workspace's `/models` list, retries with the
-  closest available image model, then falls back to the native DashScope async
-  API (`/api/v1/.../image-synthesis` + task polling) on the same gateway. If a
-  shoot still fails with 404, the model isn't enabled in your workspace —
-  enable Qwen-Image / Wanx 2.1 in the Model Studio console.
 - The baked-in key lives in the client bundle and is publicly readable — rotate
   it in the Model Studio console after testing, or move it into the relay as a
   Worker secret (`wrangler secret put DASHSCOPE_API_KEY`).
 - DashScope image URLs expire after ~24 hours, so download plates you want to
   keep (PNG / high-res buttons in the lightbox).
-   for production.
-
-If the direct call fails, the studio automatically falls back to the free
-studio engine so a shoot never dead-ends. Note that DashScope image URLs expire
-after ~24 hours — download plates you want to keep.
-
-`resolveProvider(engine)` automatically uses the direct provider when its key is
-present, and otherwise uses the free studio engine (the UI surfaces a one-time
-toast telling you which route is active). Keys are read at build time via
-`import.meta.env` — for a real deployment, proxy requests through a server so
-keys are never shipped to the browser.
+- Failed generations are never billed; new accounts get free image quota.
 
 ### 2. Engine → provider map
 
 | Studio engine       | Live provider                     | Key                    |
 | ------------------- | --------------------------------- | ---------------------- |
-| Qwen-Image          | DashScope `qwen-image`            | `VITE_DASHSCOPE_API_KEY` |
-| Wanx 2.1 Turbo/Plus | DashScope `wanx2.1-t2i-*`         | `VITE_DASHSCOPE_API_KEY` |
+| Qwen-Image 3.0 Pro  | DashScope `qwen-image-3.0-pro`    | `VITE_DASHSCOPE_API_KEY` |
+| Wan 2.7 Pro / Z-Image Turbo | DashScope `wan2.7-image-pro` / `z-image-turbo` | `VITE_DASHSCOPE_API_KEY` |
 | Flux 1.1 Pro        | `api.bfl.ml/v1/flux-pro-1.1`      | `VITE_BFL_API_KEY`     |
 | Flux Dev            | `api.bfl.ml/v1/flux-dev`          | `VITE_BFL_API_KEY`     |
 | Stable Diffusion 3.5| `api.bfl.ml/v1/sd3.5`             | `VITE_BFL_API_KEY`     |

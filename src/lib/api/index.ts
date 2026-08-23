@@ -48,7 +48,7 @@ export function providerNotice(engine: EngineId): string | null {
     case "qwen-image":
     case "wanx-turbo":
     case "wanx-plus":
-      return "Add VITE_DASHSCOPE_API_KEY to shoot with Qwen-Image / Wanx on DashScope — currently rendering via the free studio engine.";
+      return "Add VITE_DASHSCOPE_API_KEY to shoot with Qwen-Image 3.0 / Wan 2.7 / Z-Image on DashScope — currently rendering via the free studio engine.";
     case "dalle3":
       return "Rendering live via the free studio engine (Pollinations) — add VITE_OPENAI_API_KEY for DALL·E 3.";
     case "flux-pro":
