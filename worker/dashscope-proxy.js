@@ -1,53 +1,55 @@
 /**
- * EditorialAI — DashScope relay worker (Cloudflare Workers).
+ * EditorialAI — DashScope / Alibaba MaaS relay (Cloudflare Worker)
  *
- * DashScope's OpenAI-compatible API does not send browser CORS headers, so the
- * studio cannot call it directly from the client. This tiny worker mirrors the
- * API with CORS enabled.
+ * DashScope and the regional MaaS workspace gateways don't send browser CORS
+ * headers, so a page can't call them directly. This tiny worker adds them.
+ * The Authorization header rides through unchanged, so you can either let the
+ * app send its baked key or hold the real key here as a secret:
+ *
+ *   wrangler secret put DASHSCOPE_API_KEY   # stored encrypted, never in code
  *
  * Deploy:
  *   npm i -g wrangler && wrangler login
  *   wrangler deploy worker/dashscope-proxy.js --name editorial-ai-dashscope
  *
- * Then in `.env.local`:
+ * Then in the app's .env.local:
  *   VITE_DASHSCOPE_RELAY=https://editorial-ai-dashscope.<you>.workers.dev
- *
- * The worker mirrors paths, so `/compatible-mode/v1/images/generations` on the
- * worker hits `https://dashscope-intl.aliyuncs.com/compatible-mode/v1/...`.
- *
- * Hardening (recommended for production): store the API key as a Worker secret
- * (`wrangler secret put DASHSCOPE_API_KEY`) and inject it here instead of
- * trusting the client's Authorization header.
  */
-const UPSTREAM = "https://dashscope-intl.aliyuncs.com";
+
+const UPSTREAM = "https://ws-ou063af90w6dlklj.ap-southeast-1.maas.aliyuncs.com";
+// Generic accounts:  "https://dashscope-intl.aliyuncs.com"
+// China mainland:    "https://dashscope.aliyuncs.com"
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  "Access-Control-Max-Age": "86400",
 };
 
 export default {
-  async fetch(request) {
-    if (request.method === "OPTIONS") {
+  async fetch(req, env) {
+    if (req.method === "OPTIONS") {
       return new Response(null, { status: 204, headers: CORS });
     }
-    try {
-      const url = new URL(request.url);
-      const target = `${UPSTREAM}${url.pathname}${url.search}`;
-      const headers = new Headers(request.headers);
-      headers.delete("host");
-      headers.delete("content-length");
-      const upstream = await fetch(target, {
-        method: request.method,
-        headers,
-        body: request.body,
-      });
-      const out = new Headers(upstream.headers);
-      for (const [k, v] of Object.entries(CORS)) out.set(k, v);
-      return new Response(upstream.body, { status: upstream.status, headers: out });
-    } catch (err) {
-      return new Response(`Relay error: ${err.message}`, { status: 502, headers: CORS });
+
+    const url = new URL(req.url);
+    const target = new URL(url.pathname + url.search, UPSTREAM);
+
+    const headers = new Headers(req.headers);
+    // Optionally inject a worker-side secret instead of trusting the client key.
+    if (env.DASHSCOPE_API_KEY) {
+      headers.set("Authorization", `Bearer ${env.DASHSCOPE_API_KEY}`);
     }
+
+    const res = await fetch(target, {
+      method: req.method,
+      headers,
+      body: req.method === "GET" || req.method === "HEAD" ? undefined : await req.arrayBuffer(),
+    });
+
+    const out = new Response(res.body, res);
+    for (const [k, v] of Object.entries(CORS)) out.headers.set(k, v);
+    return out;
   },
 };

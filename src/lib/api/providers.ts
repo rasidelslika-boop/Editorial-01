@@ -195,7 +195,14 @@ export function hasDashscopeKey(): boolean {
 function dashscopeBase(): string {
   const relay = env.VITE_DASHSCOPE_RELAY;
   if (relay) return relay.replace(/\/+$/, "");
-  return (env.VITE_DASHSCOPE_BASE_URL ?? "https://dashscope-intl.aliyuncs.com/compatible-mode/v1").replace(/\/+$/, "");
+  // Baked default: the owner's ap-southeast-1 MaaS workspace gateway.
+  // Generic endpoints for other accounts:
+  //   intl:   https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+  //   china:  https://dashscope.aliyuncs.com/compatible-mode/v1
+  return (
+    env.VITE_DASHSCOPE_BASE_URL ??
+    "https://ws-ou063af90w6dlklj.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
+  ).replace(/\/+$/, "");
 }
 
 export function qwenProvider(engine: string): ImageProvider {

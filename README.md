@@ -63,9 +63,12 @@ Create a `.env.local` in the project root:
 # plus Flux and SD 3.5 through the same key).
 # NOTE: a key is already baked into src/lib/api/providers.ts — this env var overrides it.
 VITE_DASHSCOPE_API_KEY=sk-...
-# Optional — defaults to the international endpoint.
+# Optional — defaults to the baked ap-southeast-1 MaaS workspace gateway.
+# Other accounts — intl: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
 # China mainland: https://dashscope.aliyuncs.com/compatible-mode/v1
-VITE_DASHSCOPE_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+VITE_DASHSCOPE_BASE_URL=https://ws-ou063af90w6dlklj.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1
+# Optional — deploy worker/dashscope-proxy.js to route around browser CORS (see below)
+VITE_DASHSCOPE_RELAY=https://editorial-ai-dashscope.<you>.workers.dev
 # Browser CORS relay (recommended — see "Browser CORS" below)
 VITE_DASHSCOPE_RELAY=https://editorial-ai-dashscope.<you>.workers.dev
 
