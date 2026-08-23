@@ -18,6 +18,7 @@ import {
   Sparkles,
   Star,
   Trash2,
+  X,
 } from "lucide-react";
 import { useState } from "react";
 import { useGenerate } from "../hooks/useGenerate";
@@ -25,7 +26,7 @@ import { useStudioStore } from "../stores/editorial";
 import { useUIStore } from "../stores/ui";
 import { promptSummary } from "../lib/promptBuilder";
 import { SCENE_STARTERS } from "../lib/presets";
-import { cn, copyText, downloadImage, downloadZipArchive, highResUrl } from "../lib/utils";
+import { buildZipArchive, cn, copyText, downloadImage, highResUrl, triggerBlobDownload } from "../lib/utils";
 import type { Generation } from "../types";
 import { Button } from "./ui";
 
@@ -111,6 +112,8 @@ export function ResultsPanel() {
   const compareIds = useUIStore((s) => s.compareIds);
   const [showPrompt, setShowPrompt] = useState(false);
   const [packing, setPacking] = useState(false);
+  const [packStep, setPackStep] = useState<{ done: number; total: number } | null>(null);
+  const [archive, setArchive] = useState<{ href: string; name: string; saved: number; failed: number } | null>(null);
 
   /** Save the active plate — the grade you see on screen is baked into the file. */
   const savePlate = async (kind: "png" | "hq") => {
@@ -135,29 +138,64 @@ export function ResultsPanel() {
   const archiveSession = async () => {
     if (packing || !generations.length) return;
     setPacking(true);
+    setPackStep({ done: 0, total: generations.length });
     toast("Packing the session", {
       description: `Archiving ${generations.length} plate${generations.length === 1 ? "" : "s"}…`,
       tone: "info",
     });
-    const { saved, failed } = await downloadZipArchive(
-      generations.map((g, i) => ({
-        url: g.url,
-        name: `plate-${String(generations.length - i).padStart(2, "0")}-seed-${g.seed}`,
-        filter: g.filter,
-      }))
-    );
-    setPacking(false);
-    if (saved) {
-      toast("Session archive saved", {
-        description: `${saved} plate${saved === 1 ? "" : "s"} zipped${failed ? ` · ${failed} skipped (expired or unreachable)` : ""}.`,
-        tone: "success",
+    try {
+      const result = await buildZipArchive(
+        generations.map((g, i) => ({
+          url: g.url,
+          name: `plate-${String(generations.length - i).padStart(2, "0")}-seed-${g.seed}`,
+          filter: g.filter,
+        })),
+        (done, total) => setPackStep({ done, total })
+      );
+
+      if (!result) {
+        toast("Archive failed", {
+          description: "No plates could be fetched — DashScope URLs expire after 24h, so older plates can't be re-downloaded.",
+          tone: "error",
+        });
+        return;
+      }
+
+      // Retire any previous archive blob before mounting the new one.
+      if (archive) URL.revokeObjectURL(archive.href);
+
+      // Attempt the automatic save — but always keep a manual anchor ready,
+      // since browsers refuse unattended saves once the click gesture expires.
+      const autoSaved = triggerBlobDownload(result.blob, result.filename);
+      setArchive({
+        href: URL.createObjectURL(result.blob),
+        name: result.filename,
+        saved: result.saved,
+        failed: result.failed,
       });
-    } else {
+
+      const skipped = result.failed ? ` · ${result.failed} skipped (expired)` : "";
+      toast(autoSaved ? "Session archive saved" : "Archive ready", {
+        description: autoSaved
+          ? `${result.saved} plate${result.saved === 1 ? "" : "s"} zipped${skipped} — if it didn't land, tap Save ZIP below.`
+          : `Auto-save was blocked by the browser — tap Save ZIP below to grab ${result.saved} plate${result.saved === 1 ? "" : "s"}${skipped}.`,
+        tone: autoSaved ? "success" : "info",
+      });
+    } catch (err) {
+      console.warn("[EditorialAI] Archive failed", err);
       toast("Archive failed", {
-        description: "No plates could be fetched — DashScope URLs expire after 24h, so older plates can't be re-downloaded.",
+        description: err instanceof Error ? err.message : "Something went wrong while zipping the session.",
         tone: "error",
       });
+    } finally {
+      setPacking(false);
+      setPackStep(null);
     }
+  };
+
+  const dismissArchive = () => {
+    if (archive) URL.revokeObjectURL(archive.href);
+    setArchive(null);
   };
 
   const gen = generations.find((g) => g.id === activeId) ?? generations[0] ?? null;
@@ -519,9 +557,45 @@ export function ResultsPanel() {
               )}
             >
               {packing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
-              {packing ? "Packing…" : "Archive ZIP"}
+              {packing ? (packStep ? `Packing ${packStep.done}/${packStep.total}` : "Packing…") : "Archive ZIP"}
             </button>
           </div>
+
+          {/* Archive ready — the manual anchor is the one save trigger no browser blocks. */}
+          <AnimatePresence>
+            {archive && (
+              <motion.div
+                initial={{ opacity: 0, y: -6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -6 }}
+                transition={{ duration: 0.22 }}
+                className="mb-2.5 flex items-center gap-3 border border-gilt-500/50 bg-gilt-500/10 px-3 py-2"
+              >
+                <Archive className="h-4 w-4 shrink-0 text-gilt-600 dark:text-gilt-300" aria-hidden />
+                <div className="min-w-0 flex-1">
+                  <p className="truncate font-mono text-[11px] font-bold">{archive.name}</p>
+                  <p className="font-mono text-[10px] text-ink/50 dark:text-paper/45">
+                    {archive.saved} plate{archive.saved === 1 ? "" : "s"} packed
+                    {archive.failed ? ` · ${archive.failed} skipped` : ""} · ready to save
+                  </p>
+                </div>
+                <a
+                  href={archive.href}
+                  download={archive.name}
+                  className="flex h-8 shrink-0 items-center gap-1.5 rounded-sm bg-ink px-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-paper transition-transform duration-150 hover:-translate-y-px dark:bg-paper dark:text-ink"
+                >
+                  <Download className="h-3 w-3" /> Save ZIP
+                </a>
+                <button
+                  onClick={dismissArchive}
+                  aria-label="Dismiss archive"
+                  className="shrink-0 text-ink/40 transition-colors hover:text-ink dark:text-paper/40 dark:hover:text-paper"
+                >
+                  <X className="h-3.5 w-3.5" />
+                </button>
+              </motion.div>
+            )}
+          </AnimatePresence>
           <div className="no-scrollbar flex gap-2.5 overflow-x-auto pb-1">
             {generations.map((g) => (
               <Thumb

@@ -166,11 +166,21 @@ export function highResUrl(url: string): string | null {
   }
 }
 
-/** One-click session archive — every plate in the contact sheet, zipped. */
-export async function downloadZipArchive(
+export interface ArchiveResult {
+  blob: Blob;
+  filename: string;
+  saved: number;
+  failed: number;
+}
+
+/**
+ * Pack every plate into a ZIP blob (grades baked in). Returns null when no
+ * plate could be fetched (e.g. expired DashScope URLs).
+ */
+export async function buildZipArchive(
   items: { url: string; name: string; filter?: string }[],
   onStep?: (done: number, total: number) => void
-): Promise<{ saved: number; failed: number }> {
+): Promise<ArchiveResult | null> {
   const JSZip = (await import("jszip")).default;
   const zip = new JSZip();
   let saved = 0;
@@ -190,11 +200,33 @@ export async function downloadZipArchive(
     if (i < items.length - 1) await new Promise((r) => setTimeout(r, 250));
   }
 
-  if (!saved) return { saved, failed };
-  const out = await zip.generateAsync({ type: "blob", compression: "STORE" });
+  if (!saved) return null;
+  const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
   const stamp = new Date().toISOString().slice(0, 10);
-  triggerDownload(out, `editorial-ai-session-${stamp}.zip`);
-  return { saved, failed };
+  return { blob, filename: `editorial-ai-session-${stamp}.zip`, saved, failed };
+}
+
+/**
+ * Programmatic save via a real, dispatched anchor click. Some browsers refuse
+ * once the original user gesture has expired (long async packs) — callers
+ * should keep the blob URL alive and offer a manual anchor as a fallback.
+ */
+export function triggerBlobDownload(blob: Blob, filename: string): boolean {
+  try {
+    const href = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = href;
+    a.download = filename;
+    a.rel = "noopener";
+    document.body.appendChild(a);
+    a.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true, view: window }));
+    a.remove();
+    // Stay alive long enough for the browser to finish writing the file.
+    setTimeout(() => URL.revokeObjectURL(href), 60_000);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function downloadJson(data: unknown, filename: string) {
