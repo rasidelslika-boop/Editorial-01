@@ -43,6 +43,9 @@ const QUICK_ACTIONS: {
 
 const RATIO_BOX: Record<string, string> = {
   "1:1": "aspect-square w-8",
+  "5:4": "aspect-[5/4] w-9",
+  "4:3": "aspect-[4/3] w-10",
+  "3:2": "aspect-[3/2] w-11",
   "4:5": "aspect-[4/5] w-7",
   "3:4": "aspect-[3/4] w-7",
   "2:3": "aspect-[2/3] w-6",
@@ -53,6 +56,9 @@ const RATIO_BOX: Record<string, string> = {
 
 const RATIO_WRAP: Record<string, string> = {
   "1:1": "aspect-square w-full max-w-[540px]",
+  "5:4": "aspect-[5/4] w-full max-w-[560px]",
+  "4:3": "aspect-[4/3] w-full max-w-[600px]",
+  "3:2": "aspect-[3/2] w-full max-w-[640px]",
   "4:5": "aspect-[4/5] w-full max-w-[470px]",
   "3:4": "aspect-[3/4] w-full max-w-[480px]",
   "2:3": "aspect-[2/3] w-full max-w-[430px]",

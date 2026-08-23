@@ -334,6 +334,43 @@ export const FANTASY_SETTINGS = [
   "a palace of mirrors at the edge of a silver desert",
 ] as const;
 
+/* --------------------- Series & Seq — pose drawing + wardrobe steps --------------------- */
+
+/** Draw `n` distinct poses (Fisher–Yates shuffle), never repeating the avoided one first. */
+export function drawPoses(n: number, avoid?: string): string[] {
+  const pool = [...RANDOM_POSES];
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
+  const out = pool.filter((p) => p !== avoid).slice(0, n);
+  while (out.length < n) out.push(pick(RANDOM_POSES));
+  return out;
+}
+
+/**
+ * Wardrobe progression for the Seq shooter — REMOVE direction.
+ * Plate 0 keeps the starting outfit; each subsequent step pares the styling
+ * back one editorial layer. Everything stays in professional fashion vocabulary
+ * so renders stay within platform content moderation.
+ */
+export const REMOVE_STEPS = [
+  "the same look pared back — outer layers removed, base garments only",
+  "a minimalist silk slip dress, clean editorial styling",
+  "an elegant fitted bodysuit with refined editorial styling",
+  "a tasteful high-waisted two-piece swim ensemble, chic editorial styling",
+  "a sculptural draped-fabric wrap, artistic couture styling, tasteful and elegant",
+] as const;
+
+/** Wardrobe progression for the Seq shooter — ADD direction, layering up to full couture. */
+export const ADD_STEPS = [
+  "the same look with a structured tailored blazer added",
+  "the look with a dramatic statement coat, gloves and belt",
+  "the look with a couture overskirt and sweeping train added",
+  "the fully maximalist couture version — layered fabrics, jewelry and headpiece",
+  "an avant-garde sculptural couture extension with architectural layers",
+] as const;
+
 /* -------------------------------- 04 · the pose ------------------------------ */
 
 export const RANDOM_POSES = [

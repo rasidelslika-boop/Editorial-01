@@ -26,6 +26,12 @@ interface GenerateOptions {
   overrides?: Partial<FormState>;
   seed?: number;
   quality?: "standard" | "hq";
+  /**
+   * One override set per plate — used by the Series shooter (same muse and
+   * wardrobe, a different pose per plate) and the Seq shooter (a wardrobe
+   * step per plate). Each plate is composed and rendered individually.
+   */
+  perPlate?: Partial<FormState>[];
 }
 
 export function useGenerate() {
@@ -39,8 +45,14 @@ export function useGenerate() {
 
       const settings: FormState = { ...s.form, ...(opts.settings ?? {}), ...(opts.overrides ?? {}) };
       const base = s.baseId ? s.generations.find((g) => g.id === s.baseId) : undefined;
+
+      // Per-plate mode (Series / Seq): each plate gets its own merged settings
+      // and its own composed prompt. Otherwise a single prompt renders `count`.
+      const plateSettings: FormState[] | null =
+        opts.perPlate && opts.perPlate.length > 0 ? opts.perPlate.map((o) => ({ ...settings, ...o })) : null;
+
       const prompt = opts.prompt?.trim() || finalPrompt(settings, { baseLocked: !!base });
-      const count = Math.min(8, Math.max(1, opts.count ?? 1));
+      const count = plateSettings ? plateSettings.length : Math.min(8, Math.max(1, opts.count ?? 1));
       const seed = opts.seed ?? (base && settings.lockSeed ? base.seed : settings.seed ?? randomSeed());
 
       s.setGenerating(true);
@@ -58,32 +70,66 @@ export function useGenerate() {
 
       try {
         const provider = resolveProvider(settings.engine);
-        const images: ProviderImage[] = await provider.generate(
-          {
-            prompt,
-            negative: settings.negative.trim() || undefined,
-            seed,
-            count,
-            ratio: settings.ratio,
-            engine: settings.engine,
-            quality: opts.quality,
-          },
-          (stage, pct) => {
-            const cur = useStudioStore.getState().progress;
-            useStudioStore.getState().setProgress(Math.max(cur, Math.min(96, pct)), stage);
+        const progressCb = (stage: string, pct: number) => {
+          const cur = useStudioStore.getState().progress;
+          useStudioStore.getState().setProgress(Math.max(cur, Math.min(96, pct)), stage);
+        };
+
+        let images: ProviderImage[];
+        let platePrompts: string[];
+
+        if (plateSettings) {
+          // Render each plate individually so every one carries its own pose /
+          // wardrobe step while the muse, session and styling stay constant.
+          images = [];
+          platePrompts = [];
+          for (let i = 0; i < plateSettings.length; i++) {
+            const ps = plateSettings[i];
+            const platePrompt = finalPrompt(ps, { baseLocked: !!base });
+            useStudioStore.getState().setProgress(8 + (i / plateSettings.length) * 60, `Plate ${i + 1} of ${plateSettings.length}`);
+            const res = await provider.generate(
+              {
+                prompt: platePrompt,
+                negative: ps.negative.trim() || undefined,
+                seed: seed + i * 131,
+                count: 1,
+                ratio: ps.ratio,
+                engine: ps.engine,
+                quality: opts.quality,
+              },
+              progressCb
+            );
+            images.push(...res);
+            platePrompts.push(platePrompt);
+            // Breather between plates keeps rate-limited engines happy.
+            if (i < plateSettings.length - 1) await new Promise((r) => setTimeout(r, 1800));
           }
-        );
+        } else {
+          platePrompts = [];
+          images = await provider.generate(
+            {
+              prompt,
+              negative: settings.negative.trim() || undefined,
+              seed,
+              count,
+              ratio: settings.ratio,
+              engine: settings.engine,
+              quality: opts.quality,
+            },
+            progressCb
+          );
+        }
 
         const now = Date.now();
         const gens: Generation[] = images.map((img, i) => ({
           id: uid(),
-          prompt,
+          prompt: plateSettings ? platePrompts[i] ?? prompt : prompt,
           negative: settings.negative.trim() || undefined,
           url: img.url,
           seed: img.seed,
-          settings,
-          ratio: settings.ratio,
-          engine: settings.engine,
+          settings: plateSettings ? plateSettings[i] ?? settings : settings,
+          ratio: (plateSettings ? plateSettings[i] ?? settings : settings).ratio,
+          engine: (plateSettings ? plateSettings[i] ?? settings : settings).engine,
           filter: img.filter,
           focus: img.focus,
           upscaled: opts.quality === "hq" ? true : undefined,

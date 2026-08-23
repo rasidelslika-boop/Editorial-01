@@ -1,5 +1,18 @@
 import { motion } from "framer-motion";
-import { Camera, Dices, Flame, Layers, Lock, Sparkles, Unlock, type LucideIcon } from "lucide-react";
+import {
+  Camera,
+  Clapperboard,
+  Dices,
+  Film,
+  Flame,
+  Layers,
+  Lock,
+  Minus,
+  Plus,
+  Sparkles,
+  Unlock,
+  type LucideIcon,
+} from "lucide-react";
 import { useStudioStore } from "../stores/editorial";
 import { useGenerate } from "../hooks/useGenerate";
 import {
@@ -15,10 +28,12 @@ import {
   REFERENCE_OPTIONS,
 } from "../lib/presets";
 import {
+  ADD_STEPS,
   BODY_TYPES,
   BUST_OPTIONS,
   CLASSIC_LOOKS,
   DISTINCTIVE_DETAILS,
+  drawPoses,
   EYE_COLORS,
   EYE_SHAPES,
   FACE_FEATURES,
@@ -35,6 +50,7 @@ import {
   MUSE_VIBES,
   RANDOM_POSES,
   RANDOM_SETTINGS,
+  REMOVE_STEPS,
   SKIN_DETAILS,
   SKIN_TONES,
   TRENDY_LOOKS,
@@ -381,7 +397,7 @@ function RatioPicker() {
   const ratio = useStudioStore((s) => s.form.ratio);
   const patchForm = useStudioStore((s) => s.patchForm);
   return (
-    <div className="grid grid-cols-7 gap-1" role="radiogroup" aria-label="Aspect ratio">
+    <div className="grid grid-cols-5 gap-1" role="radiogroup" aria-label="Aspect ratio">
       {RATIOS.map((r) => {
         const [w, h] = r.id.split(":").map(Number);
         const active = ratio === r.id;
@@ -468,66 +484,190 @@ function AdvancedSection() {
   );
 }
 
+/** A compact count selector — shared by Variations, Series and Seq. */
+function CountSelect({
+  value,
+  onChange,
+  label,
+  options,
+}: {
+  value: number;
+  onChange: (n: number) => void;
+  label: string;
+  options: number[];
+}) {
+  return (
+    <select
+      aria-label={label}
+      value={value}
+      onChange={(e) => onChange(Number(e.target.value))}
+      className="h-10 rounded-sm border border-ink/25 bg-transparent px-1.5 font-mono text-xs dark:border-paper/25 dark:[&>option]:bg-ink"
+    >
+      {options.map((n) => (
+        <option key={n} value={n} className="bg-paper text-ink dark:bg-ink dark:text-paper">
+          ×{n}
+        </option>
+      ))}
+    </select>
+  );
+}
+
 function GenerateBar() {
   const { generate, generating, stage } = useGenerate();
   const batchCount = useStudioStore((s) => s.batchCount);
   const setBatchCount = useStudioStore((s) => s.setBatchCount);
+  const seriesCount = useStudioStore((s) => s.seriesCount);
+  const setSeriesCount = useStudioStore((s) => s.setSeriesCount);
+  const seqCount = useStudioStore((s) => s.seqCount);
+  const setSeqCount = useStudioStore((s) => s.setSeqCount);
+  const seqDirection = useStudioStore((s) => s.seqDirection);
+  const setSeqDirection = useStudioStore((s) => s.setSeqDirection);
+  const form = useStudioStore((s) => s.form);
+  const generations = useStudioStore((s) => s.generations);
+  const activeId = useStudioStore((s) => s.activeId);
+  const toast = useGenerateToast();
+
+  // The plate the Seq shooter starts from — the active plate, else the current form.
+  const activeGen = generations.find((g) => g.id === activeId) ?? generations[0] ?? null;
+
+  /** Series — same muse, same wardrobe, same session; a different pose per plate. */
+  const shootSeries = () => {
+    const poses = drawPoses(seriesCount, form.pose);
+    toast(`Shooting a ${seriesCount}-plate series`, {
+      description: "Same muse, same wardrobe — a fresh pose on every plate.",
+      tone: "info",
+    });
+    void generate({ count: seriesCount, perPlate: poses.map((pose) => ({ pose })) });
+  };
+
+  /** Seq — start from the active plate and step the wardrobe up or down, new pose each plate. */
+  const shootSeq = () => {
+    const steps = seqDirection === "remove" ? REMOVE_STEPS : ADD_STEPS;
+    const poses = drawPoses(seqCount, form.pose);
+    const base = activeGen?.settings ?? form;
+    const perPlate = Array.from({ length: seqCount }, (_, i) => ({
+      pose: poses[i],
+      outfit: i === 0 ? base.outfit : steps[(i - 1) % steps.length],
+    }));
+    toast(`Shooting a ${seqCount}-step ${seqDirection === "remove" ? "remove" : "add"} sequence`, {
+      description: "Wardrobe shifts one editorial layer per plate, poses never repeat.",
+      tone: "info",
+    });
+    void generate({ count: seqCount, settings: base, perPlate });
+  };
 
   return (
-    <div className="sticky bottom-0 z-10 border-t border-ink/15 bg-paper/95 px-5 py-4 backdrop-blur-sm dark:border-paper/15 dark:bg-ink/95 sm:px-6">
-      <div className="flex gap-2">
-        <motion.div className="flex-1" whileHover={{ scale: generating ? 1 : 1.008 }}>
-          <Button
-            variant="accent"
-            size="lg"
-            disabled={generating}
-            onClick={() => void generate({ count: 1 })}
-            className="w-full uppercase tracking-[0.14em]"
-            aria-label="Generate one image (Control or Command + Enter)"
-          >
-            {generating ? (
-              <>
-                <span className="h-2 w-2 animate-pulse-dot rounded-full bg-gilt-300" />
-                <span className="truncate normal-case tracking-normal">{stage || "Developing…"}</span>
-              </>
-            ) : (
-              <>
-                <Camera className="h-4 w-4" />
-                Generate
-                <kbd className="ml-1 hidden rounded-sm border border-wine-400/50 px-1.5 py-0.5 font-mono text-[9px] sm:inline">⌘↵</kbd>
-              </>
-            )}
-          </Button>
-        </motion.div>
+    <div className="sticky bottom-0 z-10 border-t border-ink/15 bg-paper/95 px-5 py-3.5 backdrop-blur-sm dark:border-paper/15 dark:bg-ink/95 sm:px-6">
+      {/* Primary generate */}
+      <motion.div whileHover={{ scale: generating ? 1 : 1.006 }}>
+        <Button
+          variant="accent"
+          size="lg"
+          disabled={generating}
+          onClick={() => void generate({ count: 1 })}
+          className="w-full uppercase tracking-[0.14em]"
+          aria-label="Generate one image (Control or Command + Enter)"
+        >
+          {generating ? (
+            <>
+              <span className="h-2 w-2 animate-pulse-dot rounded-full bg-gilt-300" />
+              <span className="truncate normal-case tracking-normal">{stage || "Developing…"}</span>
+            </>
+          ) : (
+            <>
+              <Camera className="h-4 w-4" />
+              Generate
+              <kbd className="ml-1 hidden rounded-sm border border-wine-400/50 px-1.5 py-0.5 font-mono text-[9px] sm:inline">⌘↵</kbd>
+            </>
+          )}
+        </Button>
+      </motion.div>
+
+      {/* Variations + Series */}
+      <div className="mt-2 grid grid-cols-2 gap-2">
         <div className="flex items-stretch gap-1.5">
-          <select
-            aria-label="Variations batch size"
-            value={batchCount}
-            onChange={(e) => setBatchCount(Number(e.target.value))}
-            className="h-12 rounded-sm border border-ink/25 bg-transparent px-1.5 font-mono text-xs dark:border-paper/25 dark:[&>option]:bg-ink"
-          >
-            {[2, 4, 6, 8].map((n) => (
-              <option key={n} value={n} className="bg-paper text-ink dark:bg-ink dark:text-paper">
-                ×{n}
-              </option>
-            ))}
-          </select>
+          <CountSelect value={batchCount} onChange={setBatchCount} label="Variations batch size" options={[2, 4, 6, 8]} />
           <Button
             variant="outline"
-            size="lg"
+            size="md"
             disabled={generating}
             onClick={() => void generate({ count: batchCount })}
             aria-label={`Generate ${batchCount} variations`}
-            className="uppercase tracking-[0.12em]"
+            className="h-10 flex-1 uppercase tracking-[0.08em]"
           >
-            <Layers className="h-4 w-4" />
-            <span className="hidden sm:inline">Variations</span>
-            <span className="sm:hidden">×{batchCount}</span>
+            <Layers className="h-3.5 w-3.5" />
+            <span className="hidden md:inline">Variations</span>
+            <span className="md:hidden">Var</span>
+          </Button>
+        </div>
+        <div className="flex items-stretch gap-1.5">
+          <CountSelect value={seriesCount} onChange={setSeriesCount} label="Series plate count" options={[2, 3, 4, 5, 6, 8]} />
+          <Button
+            variant="outline"
+            size="md"
+            disabled={generating}
+            onClick={shootSeries}
+            aria-label={`Generate a ${seriesCount}-plate series with different poses`}
+            title="Same muse & wardrobe, a different pose on every plate"
+            className="h-10 flex-1 uppercase tracking-[0.08em]"
+          >
+            <Film className="h-3.5 w-3.5" />
+            <span className="hidden md:inline">Series</span>
+            <span className="md:hidden">Ser</span>
           </Button>
         </div>
       </div>
-      <p className="mt-2 text-center font-mono text-[9px] uppercase tracking-[0.22em] text-ink/35 dark:text-paper/30">
-        Ctrl / ⌘ + Enter to shoot · Batch develops {batchCount} plates
+
+      {/* Seq — wardrobe remove/add across plates */}
+      <div className="mt-2 flex items-stretch gap-1.5">
+        <div
+          className="flex h-10 shrink-0 items-center rounded-sm border border-ink/25 p-0.5 dark:border-paper/25"
+          role="tablist"
+          aria-label="Sequence wardrobe direction"
+        >
+          {(
+            [
+              { id: "remove", label: "Remove", icon: Minus, title: "Pare the wardrobe back one layer per plate" },
+              { id: "add", label: "Add", icon: Plus, title: "Layer the wardrobe up one step per plate" },
+            ] as const
+          ).map((d) => (
+            <button
+              key={d.id}
+              role="tab"
+              aria-selected={seqDirection === d.id}
+              title={d.title}
+              onClick={() => setSeqDirection(d.id)}
+              className={cn(
+                "flex h-full items-center gap-1 rounded-[3px] px-2 font-mono text-[10px] font-bold uppercase tracking-[0.08em] transition-colors",
+                seqDirection === d.id
+                  ? d.id === "remove"
+                    ? "bg-wine-700 text-wine-50 dark:bg-wine-500 dark:text-wine-950"
+                    : "bg-gilt-500 text-ink dark:bg-gilt-400"
+                  : "text-ink/45 hover:text-ink dark:text-paper/45 dark:hover:text-paper"
+              )}
+            >
+              <d.icon className="h-3 w-3" />
+              <span className="hidden sm:inline">{d.label}</span>
+            </button>
+          ))}
+        </div>
+        <CountSelect value={seqCount} onChange={setSeqCount} label="Sequence step count" options={[2, 3, 4, 5, 6]} />
+        <Button
+          variant="outline"
+          size="md"
+          disabled={generating}
+          onClick={shootSeq}
+          aria-label={`Generate a ${seqCount}-step ${seqDirection} wardrobe sequence`}
+          title={`Start from the ${activeGen ? "active plate" : "current form"} and ${seqDirection} one layer per plate`}
+          className="h-10 flex-1 uppercase tracking-[0.08em]"
+        >
+          <Clapperboard className="h-3.5 w-3.5" />
+          Generate Seq
+        </Button>
+      </div>
+
+      <p className="mt-2 text-center font-mono text-[9px] uppercase tracking-[0.18em] text-ink/35 dark:text-paper/30">
+        ⌘↵ shoot · Series keeps muse & wardrobe, changes pose · Seq steps the wardrobe {seqDirection === "remove" ? "down" : "up"}
       </p>
     </div>
   );

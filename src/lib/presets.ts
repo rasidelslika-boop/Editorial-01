@@ -141,6 +141,9 @@ export const REFERENCE_OPTIONS: string[] = [
 
 export const RATIOS: { id: RatioId; label: string }[] = [
   { id: "1:1", label: "Square" },
+  { id: "5:4", label: "Plate" },
+  { id: "4:3", label: "View" },
+  { id: "3:2", label: "Landscape" },
   { id: "4:5", label: "Insta" },
   { id: "3:4", label: "Print" },
   { id: "2:3", label: "35mm" },

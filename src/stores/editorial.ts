@@ -31,6 +31,9 @@ interface StudioState {
   activeId: string | null;
   baseId: string | null;
   batchCount: number;
+  seriesCount: number;
+  seqCount: number;
+  seqDirection: "remove" | "add";
   generating: boolean;
   progress: number;
   stage: string;
@@ -46,6 +49,9 @@ interface StudioState {
   setActive: (id: string | null) => void;
   toggleBase: (id: string) => void;
   setBatchCount: (n: number) => void;
+  setSeriesCount: (n: number) => void;
+  setSeqCount: (n: number) => void;
+  setSeqDirection: (d: "remove" | "add") => void;
   loadGeneration: (id: string) => void;
   clearArchive: () => void;
 }
@@ -58,6 +64,9 @@ export const useStudioStore = create<StudioState>()(
       activeId: null,
       baseId: null,
       batchCount: 4,
+      seriesCount: 4,
+      seqCount: 4,
+      seqDirection: "remove",
       generating: false,
       progress: 0,
       stage: "",
@@ -96,6 +105,12 @@ export const useStudioStore = create<StudioState>()(
 
       setBatchCount: (n) => set({ batchCount: n }),
 
+      setSeriesCount: (n) => set({ seriesCount: n }),
+
+      setSeqCount: (n) => set({ seqCount: n }),
+
+      setSeqDirection: (d) => set({ seqDirection: d }),
+
       loadGeneration: (id) => {
         const gen = get().generations.find((g) => g.id === id);
         if (!gen) return;
@@ -126,6 +141,9 @@ export const useStudioStore = create<StudioState>()(
         activeId: s.activeId,
         baseId: s.baseId,
         batchCount: s.batchCount,
+        seriesCount: s.seriesCount,
+        seqCount: s.seqCount,
+        seqDirection: s.seqDirection,
       }),
     }
   )
