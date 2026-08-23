@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   Camera,
@@ -6,6 +7,7 @@ import {
   Film,
   Flame,
   Layers,
+  Loader2,
   Lock,
   Minus,
   Plus,
@@ -74,11 +76,19 @@ import {
   rollMuse,
   rollSkinDetail,
 } from "../lib/randomizers";
+import { aiIdentity, aiMuseBlock, aiTrait } from "../lib/aiTraits";
 import { cn } from "../lib/utils";
 import { Button, Chip, Label, Section, SelectBox, Switch, inputCls, textareaCls } from "./ui";
 import { PromptPreview } from "./PromptPreview";
 import { useUIStore } from "../stores/ui";
 import type { ReactNode } from "react";
+
+/* ------------------- AI-powered trait rolling (shared helpers) ------------------ */
+
+/** Roll a single muse-trait field with the live model, falling back to the pool. */
+function rollTraitAI(describe: string, fallback: () => string): Promise<string> {
+  return aiTrait({ describe, fallback });
+}
 
 function PresetChips({
   presets,
@@ -112,21 +122,35 @@ function RollButton({
 }: {
   icon: LucideIcon;
   label: string;
-  onRoll: () => void;
+  onRoll: () => void | Promise<void>;
   fantasy?: boolean;
   hot?: boolean;
   text?: string;
 }) {
+  const [busy, setBusy] = useState(false);
+
+  const click = () => {
+    if (busy) return;
+    const result = onRoll();
+    // AI rolls are async — show the summoning state until the phrase lands.
+    if (result instanceof Promise) {
+      setBusy(true);
+      void result.finally(() => setBusy(false));
+    }
+  };
+
   return (
     <motion.button
       whileTap={{ scale: 0.9, rotate: fantasy || hot ? 0 : 12 }}
       transition={{ type: "spring", stiffness: 500, damping: 22 }}
-      onClick={onRoll}
+      onClick={click}
+      disabled={busy}
       aria-label={label}
       title={label}
       className={cn(
         "flex h-6 items-center gap-1 rounded-sm border px-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.1em] transition-colors duration-150",
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wine-500",
+        busy && "animate-pulse opacity-80",
         fantasy
           ? "border-gilt-500/50 text-gilt-600 hover:border-gilt-500 hover:bg-gilt-500/10 dark:text-gilt-300"
           : hot
@@ -134,8 +158,8 @@ function RollButton({
             : "border-wine-700/40 text-wine-700 hover:border-wine-700 hover:bg-wine-700/10 dark:border-gilt-400/40 dark:text-gilt-400 dark:hover:border-gilt-400 dark:hover:bg-gilt-400/10"
       )}
     >
-      <Icon className="h-3 w-3" />
-      {text ?? (fantasy ? "Fantasy" : "Random")}
+      {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : <Icon className="h-3 w-3" />}
+      {busy ? "AI…" : text ?? (fantasy ? "Fantasy" : "Random")}
     </motion.button>
   );
 }
@@ -204,6 +228,12 @@ function MusePanel() {
   const numSet = (key: "heightIn" | "weightLb" | "waistIn" | "hipsIn") => (raw: string) =>
     patchMuse({ [key]: raw === "" ? null : Number(raw) } as never);
 
+  /** AI-roll a single muse field; the button shows a spinner until it lands. */
+  const aiMuseRoll =
+    (field: "hairstyle" | "hairColor" | "eyeColor" | "skinTone" | "faceShape" | "bodyType" | "distinctive" | "museVibe" | "skinDetail", describe: string, fallback: () => string) =>
+    () =>
+      rollTraitAI(describe, fallback).then((v) => patchMuse({ [field]: v } as never));
+
   return (
     <div className="mt-3 space-y-2">
       {/* 01a — Hairstyle */}
@@ -212,8 +242,25 @@ function MusePanel() {
         title="Hairstyle"
         aside={
           <>
-            <RollButton icon={Dices} label="Roll a fresh hairstyle" onRoll={() => patchMuse({ hairstyle: rollHairstyleCustom() })} />
-            <RollButton icon={Sparkles} label="Roll a fantasy hairstyle" fantasy onRoll={() => patchMuse({ hairstyle: rollHairstyleFantasy() })} />
+            <RollButton
+              icon={Dices}
+              label="Roll a fresh hairstyle with AI"
+              onRoll={aiMuseRoll(
+                "hairstyle",
+                "A trendy, camera-ready editorial hairstyle for a young fashion model — one short descriptive phrase.",
+                rollHairstyleCustom
+              )}
+            />
+            <RollButton
+              icon={Sparkles}
+              label="Roll a fantasy hairstyle with AI"
+              fantasy
+              onRoll={aiMuseRoll(
+                "hairstyle",
+                "A wildly fantastical yet beautiful hairstyle for a high-fashion editorial — one short descriptive phrase.",
+                rollHairstyleFantasy
+              )}
+            />
           </>
         }
       >
@@ -283,8 +330,25 @@ function MusePanel() {
         title="Hair colour + texture"
         aside={
           <>
-            <RollButton icon={Dices} label="Roll hair colour and texture" onRoll={() => patchMuse({ hairColor: rollHairCombo() })} />
-            <RollButton icon={Sparkles} label="Roll a fantasy hair colour" fantasy onRoll={() => patchMuse({ hairColor: rollHairComboFantasy() })} />
+            <RollButton
+              icon={Dices}
+              label="Roll hair colour and texture with AI"
+              onRoll={aiMuseRoll(
+                "hairColor",
+                "A hair colour and texture combination for a fashion model, in the format 'colour · texture'.",
+                rollHairCombo
+              )}
+            />
+            <RollButton
+              icon={Sparkles}
+              label="Roll a fantasy hair colour with AI"
+              fantasy
+              onRoll={aiMuseRoll(
+                "hairColor",
+                "A fantastical, otherworldly hair colour and texture combination, in the format 'colour · texture'.",
+                rollHairComboFantasy
+              )}
+            />
           </>
         }
       >
@@ -307,7 +371,16 @@ function MusePanel() {
         code="01d"
         title="Eyes"
         aside={
-          <RollButton icon={Dices} label="Roll a fresh eye description" onRoll={() => patchMuse({ eyeColor: rollEyesCustom(), eyeShape: "" })} />
+          <RollButton
+            icon={Dices}
+            label="Roll a fresh eye description with AI"
+            onRoll={() =>
+              rollTraitAI(
+                "Eye colour and shape for a striking fashion model, in the format 'shape colour' — do not include the word 'eyes'.",
+                rollEyesCustom
+              ).then((v) => patchMuse({ eyeColor: v.replace(/\s*eyes$/i, "").trim(), eyeShape: "" }))
+            }
+          />
         }
       >
         <Label className="!mb-1">Colour</Label>
@@ -341,8 +414,13 @@ function MusePanel() {
         aside={
           <RollButton
             icon={Dices}
-            label="Roll a fresh complexion description"
-            onRoll={() => patchMuse({ skinTone: rollSkinCustom(), undertone: "", skinDetail: "" })}
+            label="Roll a fresh complexion description with AI"
+            onRoll={() =>
+              rollTraitAI(
+                "Skin tone, undertone and finish for a fashion model as one flowing phrase, e.g. 'golden tan skin with a warm undertone and a luminous dewy glow'.",
+                rollSkinCustom
+              ).then((v) => patchMuse({ skinTone: v, undertone: "", skinDetail: "" }))
+            }
           />
         }
       >
@@ -370,7 +448,16 @@ function MusePanel() {
               options={SKIN_DETAILS.map((s) => ({ id: s, label: s }))}
               className="min-w-0 flex-1"
             />
-            <RollButton icon={Dices} label="Roll a skin finish" onRoll={() => patchMuse({ skinDetail: rollSkinDetail() })} text="Roll" />
+            <RollButton
+              icon={Dices}
+              label="Roll a skin finish with AI"
+              onRoll={aiMuseRoll(
+                "skinDetail",
+                "A skin finish for a beauty close-up fashion photograph, e.g. 'fine water droplets beading across the collarbones'.",
+                rollSkinDetail
+              )}
+              text="Roll"
+            />
           </div>
         </div>
       </MuseSub>
@@ -382,8 +469,13 @@ function MusePanel() {
         aside={
           <RollButton
             icon={Dices}
-            label="Roll a fresh face description"
-            onRoll={() => patchMuse({ faceShape: rollFaceCustom(), faceFeatures: "", makeup: "" })}
+            label="Roll a fresh face description with AI"
+            onRoll={() =>
+              rollTraitAI(
+                "Face shape, standout features and makeup level for a fashion model as one flowing phrase, e.g. 'heart-shaped face with high cheekbones, full lips and soft glam makeup'.",
+                rollFaceCustom
+              ).then((v) => patchMuse({ faceShape: v, faceFeatures: "", makeup: "" }))
+            }
           />
         }
       >
@@ -420,7 +512,21 @@ function MusePanel() {
       </MuseSub>
 
       {/* 01g — Body type */}
-      <MuseSub code="01g" title="Body type" aside={<RollButton icon={Dices} label="Roll a fresh body type" onRoll={() => patchMuse({ bodyType: rollBodyCustom() })} />}>
+      <MuseSub
+        code="01g"
+        title="Body type"
+        aside={
+          <RollButton
+            icon={Dices}
+            label="Roll a fresh body type with AI"
+            onRoll={aiMuseRoll(
+              "bodyType",
+              "A body type descriptor for a fashion model, e.g. 'a statuesque hourglass figure with long elegant lines'.",
+              rollBodyCustom
+            )}
+          />
+        }
+      >
         <div className="flex flex-wrap gap-1.5">
           {BODY_TYPES.map((b) => (
             <Chip key={b} active={muse.bodyType === b} onClick={() => patchMuse({ bodyType: b })}>
@@ -440,7 +546,17 @@ function MusePanel() {
       <MuseSub
         code="01h"
         title="Distinctive details"
-        aside={<RollButton icon={Dices} label="Roll a fresh distinctive detail" onRoll={() => patchMuse({ distinctive: rollDistinctiveCustom() })} />}
+        aside={
+          <RollButton
+            icon={Dices}
+            label="Roll a fresh distinctive detail with AI"
+            onRoll={aiMuseRoll(
+              "distinctive",
+              "One subtle distinctive detail for a fashion model — dimples, a mole's placement, a tiny tattoo or a delicate piercing — short phrase.",
+              rollDistinctiveCustom
+            )}
+          />
+        }
       >
         <div className="flex flex-wrap gap-1.5">
           {DISTINCTIVE_DETAILS.map((d) => (
@@ -458,7 +574,21 @@ function MusePanel() {
       </MuseSub>
 
       {/* 01i — Overall muse vibe */}
-      <MuseSub code="01i" title="Overall muse vibe" aside={<RollButton icon={Dices} label="Roll a fresh muse vibe" onRoll={() => patchMuse({ museVibe: rollVibeCustom() })} />}>
+      <MuseSub
+        code="01i"
+        title="Overall muse vibe"
+        aside={
+          <RollButton
+            icon={Dices}
+            label="Roll a fresh muse vibe with AI"
+            onRoll={aiMuseRoll(
+              "museVibe",
+              "An overall muse vibe for a fashion editorial, e.g. 'an elegant supermodel presence with old-money poise'.",
+              rollVibeCustom
+            )}
+          />
+        }
+      >
         <div className="flex flex-wrap gap-1.5">
           {MUSE_VIBES.map((v) => (
             <Chip key={v} active={muse.museVibe === v} onClick={() => patchMuse({ museVibe: v })}>
@@ -765,10 +895,32 @@ export function ControlPanel() {
 
   const pickField = (key: keyof typeof form) => (value: string) => patchForm({ [key]: value } as never);
 
-  const recast = () => {
-    const rolled = rollMuse();
-    patchForm({ model: rolled.model, muse: rolled.details });
-    toast("The muse has been re-cast", { description: rolled.model, tone: "success" });
+  const recast = async () => {
+    // Local roller provides the instant baseline + any fields the model skips.
+    const local = rollMuse();
+    const [identity, block] = await Promise.all([aiIdentity(() => local.model), aiMuseBlock()]);
+
+    const muse = { ...local.details };
+    if (block) {
+      muse.hairstyle = block.hairstyle;
+      muse.hairColor = block.hairColor;
+      muse.eyeColor = block.eyes.replace(/\s*eyes$/i, "").trim();
+      muse.eyeShape = "";
+      muse.skinTone = block.skin;
+      muse.undertone = "";
+      muse.skinDetail = "";
+      muse.faceShape = block.face;
+      muse.faceFeatures = "";
+      muse.bodyType = block.bodyType;
+      muse.distinctive = block.distinctive;
+      muse.museVibe = block.museVibe;
+    }
+
+    patchForm({ model: identity, muse });
+    toast(block ? "The muse has been re-cast by AI" : "The muse has been re-cast", {
+      description: identity,
+      tone: "success",
+    });
   };
 
   return (
@@ -815,8 +967,27 @@ export function ControlPanel() {
           hint="Scout the location"
           aside={
             <>
-              <RollButton icon={Dices} label="Roll a random location" onRoll={() => patchForm({ location: pick(RANDOM_SETTINGS) })} />
-              <RollButton icon={Sparkles} label="Roll a wild fantasy location" fantasy onRoll={() => patchForm({ location: pick(FANTASY_SETTINGS) })} />
+              <RollButton
+                icon={Dices}
+                label="Roll a random location with AI"
+                onRoll={() =>
+                  rollTraitAI(
+                    "A photoshoot-worthy location for a fashion editorial — it can range from an empty photo studio to a lavish hotel, beach, shed, shack, factory or wasteland. One vivid descriptive phrase.",
+                    () => pick(RANDOM_SETTINGS)
+                  ).then((v) => patchForm({ location: v }))
+                }
+              />
+              <RollButton
+                icon={Sparkles}
+                label="Roll a wild fantasy location with AI"
+                fantasy
+                onRoll={() =>
+                  rollTraitAI(
+                    "The wildest imaginable fantasy location for a high-fashion photoshoot — one vivid descriptive phrase.",
+                    () => pick(FANTASY_SETTINGS)
+                  ).then((v) => patchForm({ location: v }))
+                }
+              />
             </>
           }
         >
@@ -838,9 +1009,41 @@ export function ControlPanel() {
           hint="Style the outfit · top trending looks"
           aside={
             <>
-              <RollButton icon={Dices} label="Roll a classic look" onRoll={() => patchForm({ outfit: pick(CLASSIC_LOOKS) })} text="Classic" />
-              <RollButton icon={Sparkles} label="Roll a wild avant-garde look" fantasy onRoll={() => patchForm({ outfit: pick(WILD_LOOKS) })} text="Wild" />
-              <RollButton icon={Flame} label="Roll an alluring, glamorous look" hot onRoll={() => patchForm({ outfit: pick(HOT_LOOKS) })} text="Hot" />
+              <RollButton
+                icon={Dices}
+                label="Roll a classic look with AI"
+                onRoll={() =>
+                  rollTraitAI(
+                    "A classic, timeless fashion look — garments, fabric and styling in one evocative phrase.",
+                    () => pick(CLASSIC_LOOKS)
+                  ).then((v) => patchForm({ outfit: v }))
+                }
+                text="Classic"
+              />
+              <RollButton
+                icon={Sparkles}
+                label="Roll a wild avant-garde look with AI"
+                fantasy
+                onRoll={() =>
+                  rollTraitAI(
+                    "An avant-garde, wildly creative high-fashion look — garments, silhouette and styling in one evocative phrase.",
+                    () => pick(WILD_LOOKS)
+                  ).then((v) => patchForm({ outfit: v }))
+                }
+                text="Wild"
+              />
+              <RollButton
+                icon={Flame}
+                label="Roll an alluring, glamorous look with AI"
+                hot
+                onRoll={() =>
+                  rollTraitAI(
+                    "An alluring, glamorous fashion-editorial look — tasteful and chic, garments and styling in one evocative phrase.",
+                    () => pick(HOT_LOOKS)
+                  ).then((v) => patchForm({ outfit: v }))
+                }
+                text="Hot"
+              />
             </>
           }
         >
@@ -864,7 +1067,18 @@ export function ControlPanel() {
           no="04"
           title="The Pose"
           hint="Direct the composition"
-          aside={<RollButton icon={Dices} label="Roll a random pose" onRoll={() => patchForm({ pose: pick(RANDOM_POSES) })} />}
+          aside={
+            <RollButton
+              icon={Dices}
+              label="Roll a random pose with AI"
+              onRoll={() =>
+                rollTraitAI(
+                  "A fashion pose and composition direction, e.g. 'standing full-length, weight on one hip, chin lifted, fabric caught mid-motion'.",
+                  () => pick(RANDOM_POSES)
+                ).then((v) => patchForm({ pose: v }))
+              }
+            />
+          }
         >
           <PresetChips presets={POSE_PRESETS} onPick={pickField("pose")} activeValue={form.pose} />
           <textarea

@@ -51,12 +51,7 @@ export function museText(form: FormState): string {
     if (phrase(d.skinTone)) face.push(d.skinTone);
     else face.push(d.undertone ? `${d.skinTone} skin with a ${d.undertone} undertone` : `${d.skinTone} skin`);
   }
-  if (
-    d.skinDetail &&
-    !(d.skinTone && phrase(d.skinTone)) &&
-    d.skinDetail !== "none — flawless matte" &&
-    d.skinDetail !== "natural bare skin"
-  ) {
+  if (d.skinDetail && d.skinDetail !== "none — flawless matte" && d.skinDetail !== "natural bare skin") {
     face.push(d.skinDetail);
   }
 
