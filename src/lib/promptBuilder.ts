@@ -121,11 +121,16 @@ export function composePrompt(form: FormState, opts?: { baseLocked?: boolean }):
  *      the shoot keeps the identical backdrop and look while pose, expression
  *      and framing change.
  */
-export function composeSeriesPlate(form: FormState, frame: SeriesFrame): string {
+export function composeScenePlate(
+  form: FormState,
+  frame: SeriesFrame,
+  opts?: { wardrobeShifts?: boolean }
+): string {
   const identity = form.model.trim() || "a breathtaking 21-year-old woman";
   const traits = museText(form);
   const muse = traits ? `${identity}, ${traits}` : identity;
   const outfit = form.outfit.trim() || "her styled look";
+  const shifting = opts?.wardrobeShifts === true;
 
   const settingBits = [form.location.trim(), lightingText(form), `shot on ${cameraText(form)}`]
     .filter((s) => s && s.length > 2)
@@ -133,11 +138,19 @@ export function composeSeriesPlate(form: FormState, frame: SeriesFrame): string 
   const ref = form.reference.trim();
   const motion = frame.motion ? `, ${frame.motion}` : "";
 
+  const contract = shifting
+    ? `She is the exact same model in the exact same location as every other frame of this shoot — only her outfit, pose, expression and framing change from frame to frame. ` +
+      `Do not change the backdrop or setting.`
+    : `She is the exact same model, wearing the exact same outfit, in the exact same location as every other frame of this shoot — only her pose, expression and framing change from frame to frame. ` +
+      `Do not change the backdrop or setting.`;
+  const outfitLine = shifting ? `In this frame she is wearing: ${outfit}.` : `She is wearing exactly this outfit: ${outfit}.`;
+
   const prompt =
     `A single standalone fashion editorial photograph — exactly one model in one scene, no collage, no grid, no split panels. ` +
+    `${contract} ` +
     `The setting: ${settingBits}` +
     `${ref && ref !== "none" ? `, in the style of ${ref}` : ""}. ` +
-    `The model is ${muse}, wearing exactly this outfit: ${outfit}. ` +
+    `The model is ${muse}. ${outfitLine} ` +
     `In this photograph she is captured in a ${frame.framing}, ${frame.pose}${motion}, ${frame.expression}, ` +
     `hyper-detailed skin texture, refined colour grade, professional fashion photography, 8k`;
 
