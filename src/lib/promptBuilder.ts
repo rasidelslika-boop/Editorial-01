@@ -1,4 +1,4 @@
-import type { FormState } from "../types";
+import type { FormState, SeriesFrame } from "../types";
 import { CAMERA_OPTIONS, LIGHTING_CUSTOM_ID, LIGHTING_OPTIONS } from "./presets";
 
 /**
@@ -110,6 +110,41 @@ export function composePrompt(form: FormState, opts?: { baseLocked?: boolean }):
   }
 
   return prompt;
+}
+
+/**
+ * A Series frame. The whole prompt is built around one contract: the model,
+ * the outfit and — crucially — the location and backdrop are IDENTICAL in
+ * every frame of the shoot; only her pose, expression and framing change.
+ * That pinning language is what keeps the background from drifting between
+ * plates.
+ */
+export function composeSeriesPlate(form: FormState, frame: SeriesFrame, index: number, total: number): string {
+  const identity = form.model.trim() || "a breathtaking 21-year-old woman";
+  const traits = museText(form);
+  const muse = traits ? `${identity}, ${traits}` : identity;
+  const outfit = form.outfit.trim() || "the same styled look";
+
+  const settingBits = [form.location.trim(), lightingText(form), `shot on ${cameraText(form)}`]
+    .filter((s) => s && s.length > 2)
+    .join(", ");
+  const ref = form.reference.trim();
+  const motion = frame.motion ? `, ${frame.motion}` : "";
+
+  const prompt =
+    `Editorial series frame ${index + 1} of ${total}, one continuous photoshoot — ` +
+    `every frame keeps the exact same model, the exact same outfit and the exact same location; ` +
+    `only her pose, expression and framing change from frame to frame. ` +
+    `Identical backdrop and setting in every frame: ${settingBits}` +
+    `${ref && ref !== "none" ? `, in the style of ${ref}` : ""}. ` +
+    `The same model — ${muse} — wearing the exact same outfit: ${outfit}. ` +
+    `This frame: ${frame.framing}, ${frame.pose}${motion}, ${frame.expression}, ` +
+    `hyper-detailed skin texture, refined colour grade, professional fashion photography, 8k`;
+
+  if (form.engine === "mj6") {
+    return `${prompt} --ar ${form.ratio} --style raw --stylize 250${form.seed ? ` --seed ${form.seed}` : ""}`;
+  }
+  return `${prompt} [${form.ratio} frame]`;
 }
 
 /** The prompt actually sent — honours free-write prompt-engineering mode. */

@@ -503,6 +503,105 @@ export const FANTASY_SETTINGS = [
 
 /* --------------------- Series & Seq — pose drawing + wardrobe steps --------------------- */
 
+/**
+ * Series vocabulary — the full range of editorial body language: static
+ * stances, floor work, frozen action, and in-motion frames.
+ */
+export const SERIES_POSES = [
+  "standing tall, weight on one hip, chin lifted, a commanding full-length stance",
+  "crouching low with knees bent, elbows resting on knees, street-style attitude",
+  "lying flat on her back, limbs relaxed and elongated, shot from directly above",
+  "lying on her side propped on one elbow, a languid editorial repose",
+  "frozen mid-air in a full jump, feet off the ground, hair and fabric suspended",
+  "walking briskly toward the camera mid-stride, coat and fabric caught in motion",
+  "caught mid-spin, dress fanning out like a halo, hair in flight",
+  "sitting on the floor with legs crossed, elbows on knees, intimate and unguarded",
+  "leaning back against a wall with ankles crossed, hands loose in pockets",
+  "kneeling on one knee, back arched, chin tipped toward the light",
+  "running in profile at full sprint, a pure action shot",
+  "perched on the edge of a step, legs dangling, caught between frames",
+  "twirling with one arm raised, skirt flaring, pure movement",
+  "striding away from the camera, coat swinging, glancing back over the shoulder",
+] as const;
+
+export const SERIES_FRAMINGS = [
+  "full-length wide frame",
+  "three-quarter editorial crop",
+  "medium shot from the waist up",
+  "low-angle power framing",
+  "high-angle fashion crop",
+  "tight environmental frame",
+] as const;
+
+export const SERIES_EXPRESSIONS = [
+  "a fierce direct stare into the lens",
+  "laughing unguarded, caught mid-moment",
+  "a serene gaze just past the camera",
+  "a smouldering over-the-shoulder look",
+  "eyes closed, chin lifted to the sky",
+  "head thrown back in full laughter",
+  "cool and unbothered, utterly at ease",
+  "a surprised wide-eyed glance",
+] as const;
+
+export const MOTION_MODIFIERS = [
+  "tack-sharp frozen motion, every edge crisp",
+  "slight motion blur on the moving limbs only, face perfectly sharp",
+  "shutter-drag streaks trailing behind her, subject sharp",
+  "1/30s handheld energy with subtle movement blur",
+] as const;
+
+/** The unexpected-results deck — drawn occasionally for surprise frames. */
+export const WILDCARD_FRAMES = [
+  "shot from behind, walking away, a single glance back over her shoulder",
+  "a dramatic pure-profile silhouette against the setting",
+  "candid and off-guard, adjusting her hair mid-motion",
+  "composed in a mirror or window reflection, the reflection framing the shot",
+  "an extreme low worm's-eye view, towering over the camera",
+] as const;
+
+/**
+ * Draw `n` series frames — poses, expressions, framings and motion treatments
+ * never repeat within a shoot, and 1–2 frames are pulled from the wildcard
+ * deck for genuinely unexpected results.
+ */
+export function drawSeriesFrames(n: number): import("../types").SeriesFrame[] {
+  const frames: import("../types").SeriesFrame[] = [];
+  const usedPoses = new Set<string>();
+  const usedExpressions = new Set<string>();
+  const wildcardBudget = n >= 5 ? 2 : 1;
+  let wildcardsUsed = 0;
+
+  for (let i = 0; i < n; i++) {
+    if (wildcardsUsed < wildcardBudget && Math.random() < 0.25) {
+      wildcardsUsed++;
+      frames.push({
+        pose: pick(WILDCARD_FRAMES),
+        expression: pick(SERIES_EXPRESSIONS),
+        framing: pick(SERIES_FRAMINGS),
+        motion: "",
+        wildcard: true,
+      });
+      continue;
+    }
+
+    let pose = pick(SERIES_POSES);
+    for (let guard = 0; usedPoses.has(pose) && guard < 14; guard++) pose = pick(SERIES_POSES);
+    usedPoses.add(pose);
+
+    let expression = pick(SERIES_EXPRESSIONS);
+    for (let guard = 0; usedExpressions.has(expression) && guard < 8; guard++) expression = pick(SERIES_EXPRESSIONS);
+    usedExpressions.add(expression);
+
+    // Action poses usually earn a motion treatment; static ones rarely do.
+    const actiony = /jump|walk|run|spin|stride|sprint|twirl|mid-air/i.test(pose);
+    const motion = actiony && Math.random() < 0.65 ? pick(MOTION_MODIFIERS) : Math.random() < 0.15 ? pick(MOTION_MODIFIERS) : "";
+
+    frames.push({ pose, expression, framing: pick(SERIES_FRAMINGS), motion });
+  }
+  return frames;
+}
+
 /** Draw `n` distinct poses (Fisher–Yates shuffle), never repeating the avoided one first. */
 export function drawPoses(n: number, avoid?: string): string[] {
   const pool = [...RANDOM_POSES];

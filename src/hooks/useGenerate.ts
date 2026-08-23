@@ -32,6 +32,10 @@ interface GenerateOptions {
    * step per plate). Each plate is composed and rendered individually.
    */
   perPlate?: Partial<FormState>[];
+  /** Custom per-plate composer — the Series shooter uses it to pin the setting. */
+  compose?: (s: FormState, i: number) => string;
+  /** Seed offset between plates. Series uses 0 (same seed anchors the backdrop). */
+  seedStep?: number;
 }
 
 export function useGenerate() {
@@ -83,15 +87,16 @@ export function useGenerate() {
           // wardrobe step while the muse, session and styling stay constant.
           images = [];
           platePrompts = [];
+          const step = opts.seedStep ?? 131;
           for (let i = 0; i < plateSettings.length; i++) {
             const ps = plateSettings[i];
-            const platePrompt = finalPrompt(ps, { baseLocked: !!base });
+            const platePrompt = opts.compose ? opts.compose(ps, i) : finalPrompt(ps, { baseLocked: !!base });
             useStudioStore.getState().setProgress(8 + (i / plateSettings.length) * 60, `Plate ${i + 1} of ${plateSettings.length}`);
             const res = await provider.generate(
               {
                 prompt: platePrompt,
                 negative: ps.negative.trim() || undefined,
-                seed: seed + i * 131,
+                seed: seed + i * step,
                 count: 1,
                 ratio: ps.ratio,
                 engine: ps.engine,

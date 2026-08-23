@@ -36,6 +36,7 @@ import {
   CLASSIC_LOOKS,
   DISTINCTIVE_DETAILS,
   drawPoses,
+  drawSeriesFrames,
   EYE_COLORS,
   EYE_SHAPES,
   FACE_FEATURES,
@@ -77,6 +78,7 @@ import {
   rollSkinDetail,
 } from "../lib/randomizers";
 import { aiIdentity, aiMuseBlock, aiTrait } from "../lib/aiTraits";
+import { composeSeriesPlate } from "../lib/promptBuilder";
 import { cn } from "../lib/utils";
 import { Button, Chip, Label, Section, SelectBox, Switch, inputCls, textareaCls } from "./ui";
 import { PromptPreview } from "./PromptPreview";
@@ -744,14 +746,32 @@ function GenerateBar() {
   // The plate the Seq shooter starts from — the active plate, else the current form.
   const activeGen = generations.find((g) => g.id === activeId) ?? generations[0] ?? null;
 
-  /** Series — same muse, same wardrobe, same session; a different pose per plate. */
+  /**
+   * Series — ONE continuous photoshoot: the exact same model, the exact same
+   * outfit and the exact same location on every plate. Only her pose,
+   * expression, framing and motion treatment change — and the pinned prompt
+   * plus a shared seed keep the backdrop from drifting between frames.
+   */
   const shootSeries = () => {
-    const poses = drawPoses(seriesCount, form.pose);
-    toast(`Shooting a ${seriesCount}-plate series`, {
-      description: "Same muse, same wardrobe — a fresh pose on every plate.",
+    const s = useStudioStore.getState();
+    const settings = { ...s.form };
+    const n = s.seriesCount;
+    const frames = drawSeriesFrames(n);
+    const wildcards = frames.filter((f) => f.wildcard).length;
+    const teaser = frames
+      .slice(0, 3)
+      .map((f) => f.pose.split(",")[0])
+      .join(" · ");
+    toast(`Series of ${n} — one continuous shoot`, {
+      description: `${teaser}…${wildcards ? ` + ${wildcards} wildcard frame${wildcards > 1 ? "s" : ""}` : ""}`,
       tone: "info",
     });
-    void generate({ count: seriesCount, perPlate: poses.map((pose) => ({ pose })) });
+    void generate({
+      settings,
+      perPlate: frames.map((f) => ({ pose: f.pose, expression: f.expression })),
+      compose: (ps, i) => composeSeriesPlate(ps, frames[i], i, n),
+      seedStep: 0,
+    });
   };
 
   /** Seq — start from the active plate and step the wardrobe up or down, new pose each plate. */
@@ -821,8 +841,8 @@ function GenerateBar() {
             size="md"
             disabled={generating}
             onClick={shootSeries}
-            aria-label={`Generate a ${seriesCount}-plate series with different poses`}
-            title="Same muse & wardrobe, a different pose on every plate"
+            aria-label={`Generate a ${seriesCount}-plate series — same model, outfit and background, a new pose each frame`}
+            title="Same model, same outfit, same background — every frame gets a new pose, look and energy (crouches, floor poses, frozen jumps, motion blur…), with the occasional wildcard"
             className="h-10 flex-1 uppercase tracking-[0.08em]"
           >
             <Film className="h-3.5 w-3.5" />

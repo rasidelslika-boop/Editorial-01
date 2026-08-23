@@ -91,3 +91,13 @@ export interface ToastItem {
   description?: string;
   tone: ToastTone;
 }
+
+/** One frame of a Series shoot — same muse/outfit/setting, new energy. */
+export interface SeriesFrame {
+  pose: string;
+  expression: string;
+  framing: string;
+  /** Motion treatment — "" means a clean, crisp frame. */
+  motion: string;
+  wildcard?: boolean;
+}
