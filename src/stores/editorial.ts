@@ -1,11 +1,13 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { FormState, Generation } from "../types";
+import type { FormState, Generation, MuseDetails } from "../types";
 import { NEGATIVE_DEFAULT } from "../lib/presets";
+import { EMPTY_MUSE } from "../lib/randomizers";
 import { randomSeed } from "../lib/utils";
 
 export const DEFAULT_FORM: FormState = {
   model: "",
+  muse: { ...EMPTY_MUSE },
   expression: "",
   outfit: "",
   pose: "",
@@ -60,6 +62,8 @@ export const useStudioStore = create<StudioState>()(
       stage: "",
 
       patchForm: (patch) => set((s) => ({ form: { ...s.form, ...patch } })),
+
+      patchMuse: (patch) => set((s) => ({ form: { ...s.form, muse: { ...s.form.muse, ...patch } } })),
 
       randomizeSeed: () => set((s) => ({ form: { ...s.form, seed: randomSeed() } })),
 

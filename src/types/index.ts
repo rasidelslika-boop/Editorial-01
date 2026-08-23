@@ -13,9 +13,35 @@ export type EngineId =
 
 export type PromptMode = "auto" | "custom";
 
+/**
+ * 01a–01i — the deep muse trait system. Every field is independently
+ * randomizable (lock some, roll others). Measurements are imperial.
+ */
+export interface MuseDetails {
+  /** 01a */ hairstyle: string;
+  /** 01c */ hairColor: string; // colour + texture combo
+  /** 01b */ heightIn: number | null; // 56 (4'8") – 81 (6'9")
+  weightLb: number | null; // 85 – 250
+  bust: string; // US band + cup, e.g. "34C"
+  waistIn: number | null; // 18 – 36
+  hipsIn: number | null; // 30 – 50
+  /** 01d */ eyeColor: string;
+  eyeShape: string;
+  /** 01e */ skinTone: string;
+  undertone: string;
+  skinDetail: string;
+  /** 01f */ faceShape: string;
+  faceFeatures: string;
+  makeup: string;
+  /** 01g */ bodyType: string;
+  /** 01h */ distinctive: string;
+  /** 01i */ museVibe: string;
+}
+
 export interface FormState {
-  /** The muse — age, ethnicity, gender presentation, body type, skin, features, hair, makeup. */
+  /** The muse — identity line: age, ethnicity, presence. Physical detail lives in `muse`. */
   model: string;
+  muse: MuseDetails;
   expression: string;
   outfit: string;
   pose: string;
