@@ -3,6 +3,7 @@ import { mockProvider, type ImageProvider } from "./mock";
 import { bflProvider, customProvider, hasDashscopeKey, openaiProvider, qwenProvider } from "./providers";
 
 export type { ImageProvider, ProviderImage, GenerateRequest, ProgressFn } from "./mock";
+export { mockProvider } from "./mock";
 
 const env = import.meta.env as Record<string, string | undefined>;
 

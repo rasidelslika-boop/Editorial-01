@@ -392,49 +392,168 @@ async function nativeGenerate(ctx: OneShot, diag: { last?: string }): Promise<st
   throw new Error("DashScope task timed out after ~2 minutes");
 }
 
+/* --------------- route search: bases × models, with caching --------------- */
+
+/** Known DashScope image models, best-first, for the blind cascade. */
+const MODEL_CASCADE = [
+  "qwen-image",
+  "qwen-image-plus",
+  "wanx2.1-t2i-plus",
+  "wanx2.1-t2i-turbo",
+  "wanx2.0-t2i-turbo",
+  "flux-merged",
+  "flux-schnell",
+  "stable-diffusion-3.5-large",
+];
+
+/** Every base worth trying, in order (workspace first, generic intl last). */
+function candidateBases(): string[] {
+  const list: string[] = [];
+  const push = (b?: string) => {
+    if (!b) return;
+    const clean = b.replace(/\/+$/, "");
+    if (clean && !list.includes(clean)) list.push(clean);
+  };
+  push(env.VITE_DASHSCOPE_BASE_URL);
+  push(`${dashscopeHost()}/compatible-mode/v1`);
+  push(`${dashscopeHost()}/v1`); // some MaaS gateways expose /v1 without /compatible-mode
+  push("https://dashscope-intl.aliyuncs.com/compatible-mode/v1");
+  return list;
+}
+
+const nativeFor = (base: string) => `${base.match(/^(https?:\/\/[^/]+)/)?.[1] ?? ""}/api/v1`;
+const shortHost = (u: string) => u.replace(/^https?:\/\//, "").slice(0, 44);
+
+interface RouteCache {
+  base: string;
+  model: string;
+  ts: number;
+}
+const ROUTE_KEY = "editorial-ai:ds-route:v1";
+
+function readRoute(): RouteCache | null {
+  try {
+    const raw = localStorage.getItem(ROUTE_KEY);
+    if (!raw) return null;
+    const r = JSON.parse(raw) as RouteCache;
+    return Date.now() - r.ts < 12 * 3_600_000 ? r : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveRoute(base: string, model: string) {
+  try {
+    localStorage.setItem(ROUTE_KEY, JSON.stringify({ base, model, ts: Date.now() }));
+  } catch {
+    /* private mode */
+  }
+}
+
+/**
+ * Search for a working base × model combination:
+ *   1. cached winner (12h TTL) → 2. compatible-mode on every candidate base,
+ *   preferred model first then a blind cascade → 3. a `/models` probe on the
+ *   primary base → 4. the native async API with the same cascade.
+ * A full trace is collected so failures explain themselves.
+ */
 async function generateOne(ctx: OneShot): Promise<string> {
   const diag: { last?: string } = {};
+  const trace: string[] = [];
+  const cached = readRoute();
 
-  // Route A — OpenAI-compatible sync call.
-  const compat = await tryCompatible(ctx, diag);
-  if ("url" in compat) return compat.url;
+  const basesRaw = cached ? [cached.base, ...candidateBases()] : candidateBases();
+  const seen = new Set<string>();
+  const bases = basesRaw.filter((b) => (seen.has(b) ? false : (seen.add(b), true)));
 
-  // Route A2 — route/model missing? Probe the workspace and retry with the
-  // closest available image model.
-  if (
-    "status" in compat &&
-    (compat.status === 404 || compat.status === 405 || compat.status === 400)
-  ) {
-    const models = await probeModels(ctx.base, ctx.key);
-    if (models) {
-      const alt = pickAvailableImageModel(models, ctx.model);
-      if (alt && alt !== ctx.model) {
-        console.info(`[EditorialAI] "${ctx.model}" unavailable in workspace — retrying with "${alt}"`);
-        ctx.onProgress?.(`Retrying with ${alt}`, 24);
-        const retry = await tryCompatible({ ...ctx, model: alt }, diag);
-        if ("url" in retry) return retry.url;
-        if ("network" in retry) throw new TypeError("Failed to fetch");
-      } else if (!alt) {
-        diag.last = `no image models found among ${models.length} workspace models`;
+  let sawHttp = false;
+  let attempts = 0;
+
+  for (const base of bases) {
+    const models: string[] =
+      cached && cached.base === base ? [cached.model, ctx.model] : [ctx.model];
+    for (const m of MODEL_CASCADE) if (!models.includes(m)) models.push(m);
+
+    for (const model of models) {
+      if (attempts >= 8) break;
+      attempts += 1;
+      ctx.onProgress?.(`Trying ${model}`, 14 + Math.min(30, attempts * 4));
+      const r = await tryCompatible({ ...ctx, base, model }, diag);
+      if ("url" in r) {
+        saveRoute(base, model);
+        return r.url;
+      }
+      if ("network" in r) {
+        trace.push(`${shortHost(base)} · ${model} → unreachable`);
+        break; // this base can't be reached at all — try the next one
+      }
+      sawHttp = true;
+      trace.push(`${shortHost(base)} · ${model} → ${r.status}`);
+      if (r.status === 401 || r.status === 403) {
+        throw new Error(`DashScope rejected the API key (HTTP ${r.status}). Rotate or replace it in the console.`);
+      }
+      if (r.status === 429) await sleep(4_000);
+    }
+
+    // Probe the primary base's model list before moving on.
+    if (base === bases[0]) {
+      const available = await probeModels(base, ctx.key);
+      if (available?.length) {
+        const alt = pickAvailableImageModel(available, ctx.model);
+        if (alt) {
+          const r = await tryCompatible({ ...ctx, base, model: alt }, diag);
+          if ("url" in r) {
+            saveRoute(base, alt);
+            return r.url;
+          }
+          if ("status" in r) {
+            sawHttp = true;
+            trace.push(`${shortHost(base)} · ${alt} (probed) → ${r.status}`);
+          }
+        }
+        const imageOnes = available.filter((m) => IMAGE_HINTS.some((h) => m.toLowerCase().includes(h)));
+        if (!imageOnes.length) {
+          diag.last = `workspace lists ${available.length} models but none look image-capable (${available.slice(0, 5).join(", ")}${available.length > 5 ? "…" : ""})`;
+        }
       }
     }
   }
 
-  if ("network" in compat) throw new TypeError("Failed to fetch");
-
-  // Route B — native DashScope async API on the same gateway.
-  try {
-    return await nativeGenerate(ctx, diag);
-  } catch (err) {
-    if (isNetworkError(err)) throw err; // let the studio engine take over
-    const hint =
-      err instanceof HttpError && err.status === 404
-        ? " The model may not be enabled in this Model Studio workspace — enable Qwen-Image / Wanx 2.1 in the console, or pick another engine."
-        : "";
-    throw new Error(
-      `${err instanceof Error ? err.message : "DashScope render failed"}.${hint}${diag.last ? ` (last: ${diag.last})` : ""}`
-    );
+  // Route B — native DashScope async API, same cascade, two bases.
+  const tried = new Set<string>();
+  for (const base of bases.slice(0, 2)) {
+    const nativeBase = nativeFor(base);
+    for (const model of [ctx.model, ...MODEL_CASCADE.slice(0, 3)]) {
+      const combo = `${nativeBase}|${model}`;
+      if (tried.has(combo)) continue;
+      tried.add(combo);
+      try {
+        const url = await nativeGenerate({ ...ctx, nativeBase, model }, diag);
+        saveRoute(base, model);
+        return url;
+      } catch (err) {
+        if (isNetworkError(err)) {
+          trace.push(`${shortHost(nativeBase)} · ${model} → unreachable`);
+          break;
+        }
+        const msg = err instanceof Error ? err.message : String(err);
+        trace.push(`${shortHost(nativeBase)} · ${model} → ${msg.slice(0, 70)}`);
+        if (/401|403|InvalidApiKey|AccessDenied/i.test(msg)) {
+          throw new Error(`DashScope rejected the API key — rotate or replace it in the console.`);
+        }
+      }
+    }
   }
+
+  // Nothing responded over HTTP at all → browser can't reach the endpoint
+  // (CORS / offline). Throwing a TypeError hands the shoot to the studio engine.
+  if (!sawHttp) throw new TypeError("Failed to fetch");
+
+  console.warn("[EditorialAI] DashScope route trace:", trace);
+  const hint = /none look image-capable/.test(diag.last ?? "")
+    ? "Your workspace exposes no image models yet — enable Qwen-Image or Wanx 2.1 in Model Studio → Models, then shoot again."
+    : "No DashScope route accepted the job — the image model likely needs enabling in your workspace.";
+  throw new Error(`${hint} [${trace.slice(0, 3).join(" · ")}]`);
 }
 
 export function qwenProvider(engine: string): ImageProvider {
@@ -472,10 +591,10 @@ export function qwenProvider(engine: string): ImageProvider {
           images.push({ url, seed });
         } catch (err) {
           if (isNetworkError(err)) {
-            // Endpoint unreachable from the browser (CORS/offline) — the free
-            // studio engine finishes the shoot so it never dead-ends.
-            console.warn("[EditorialAI] DashScope unreachable — studio engine takes over.", err);
-            const remaining = await studioProvider.generate(req, onProgress);
+            // Endpoint unreachable from the browser (CORS/offline) — serve a
+            // curated stand-in plate so the shoot lands beautifully and fast.
+            console.warn("[EditorialAI] DashScope unreachable — curated stand-ins take over.", err);
+            const remaining = await studioProvider.generate({ ...req, curatedOnly: true }, onProgress);
             return [...images, ...remaining.slice(images.length).map((img) => ({ ...img, fallback: true }))];
           }
           throw err;

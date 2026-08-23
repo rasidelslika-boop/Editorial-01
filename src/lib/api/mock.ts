@@ -26,6 +26,8 @@ export interface GenerateRequest {
   ratio: string;
   engine?: string;
   quality?: "standard" | "hq";
+  /** Skip live rendering — serve straight from the curated plate pool. */
+  curatedOnly?: boolean;
 }
 
 export type ProgressFn = (stage: string, pct: number) => void;
@@ -86,11 +88,15 @@ const FINISHES = [
   { label: "Chrome Gloss", filter: "saturate(1.3) contrast(1.16) brightness(1.02)" },
 ];
 
+const CROPS = ["center", "top", "bottom", "close"];
+
 function fallbackPick(prompt: string, seed: number, index: number) {
   const rng = mulberry32(hashString(prompt) ^ ((seed + index * 7919) >>> 0));
   const plate = PLATE_POOL[Math.floor(rng() * PLATE_POOL.length)];
   const finish = FINISHES[Math.floor(rng() * FINISHES.length)];
-  return { plate, finish };
+  // A different crop per seed so stand-in plates read as distinct shots.
+  const crop = CROPS[Math.floor(rng() * CROPS.length)];
+  return { plate, finish, crop };
 }
 
 /* ------------------------------ Live engine ------------------------------ */
@@ -116,15 +122,66 @@ export function liveDimensions(ratio: string, maxSide: number) {
 }
 
 /**
- * The anonymous Pollinations tier currently serves only `sana`
- * (flux/turbo moved behind registered tokens). With a token in
- * VITE_POLLINATIONS_TOKEN the engines get their proper models.
+ * Discover the best model the anonymous tier will actually serve right now.
+ * The list has moved around (flux → sana-only → …), so we ask the engine
+ * itself once per hour instead of hardcoding, and prefer flux-class models
+ * whenever they're available. With a VITE_POLLINATIONS_TOKEN, flux is assumed.
  */
-function pollinationsModel(engine?: string): string {
-  if (POLLINATIONS_TOKEN) {
-    return engine === "sd3" ? "turbo" : "flux";
+let modelPick: Promise<string> | null = null;
+function pickLiveModel(engine?: string): Promise<string> {
+  if (POLLINATIONS_TOKEN) return Promise.resolve(engine === "sd3" ? "turbo" : "flux");
+  if (!modelPick) {
+    modelPick = (async () => {
+      try {
+        const cached = localStorage.getItem("editorial-ai:pl-model");
+        if (cached) {
+          const [m, ts] = cached.split("|");
+          if (m && Date.now() - Number(ts) < 3_600_000) return m;
+        }
+      } catch {
+        /* private mode */
+      }
+      let best = "sana";
+      try {
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 5_000);
+        const res = await fetch("https://image.pollinations.ai/models", { signal: ctrl.signal });
+        clearTimeout(timer);
+        if (res.ok) {
+          const list: unknown = await res.json();
+          if (Array.isArray(list)) {
+            best = ["flux", "kontext", "turbo"].find((m) => list.includes(m)) ?? "sana";
+          }
+        }
+      } catch {
+        /* offline — sana */
+      }
+      try {
+        localStorage.setItem("editorial-ai:pl-model", `${best}|${Date.now()}`);
+      } catch {
+        /* ignore */
+      }
+      return best;
+    })();
   }
-  return "sana";
+  return modelPick;
+}
+
+/**
+ * Smaller diffusion models choke on long briefs and MJ-style flags.
+ * Flux-class models get the full prompt; everyone else gets a tight caption.
+ */
+function tunePrompt(prompt: string, model: string): string {
+  let p = prompt
+    .replace(/\s*--\w+\s+\S+/g, "") // --ar / --stylize / --seed flags
+    .replace(/\s*\[\d+:\d+ frame\]/g, "") // ratio tags
+    .replace(/\s{2,}/g, " ")
+    .trim();
+  if (model === "flux" || model === "kontext") return p.slice(0, 1200);
+  p = p
+    .replace(/,\s*hyper-detailed[\s\S]*$/i, ", professional fashion photography, sharp focus, natural skin texture")
+    .trim();
+  return p.slice(0, 360);
 }
 
 export function liveUrl(prompt: string, seed: number, width: number, height: number, model: string) {
@@ -164,13 +221,14 @@ async function renderLive(url: string): Promise<void> {
   }
 }
 
-/** Try the engine's model first, then `sana`, with throttle back-off between attempts. */
+/** Try the best discovered model first, then `sana`, with throttle back-off between attempts. */
 async function developPlate(prompt: string, seed: number, width: number, height: number, engine?: string): Promise<string> {
-  const models = [pollinationsModel(engine)];
+  const preferred = await pickLiveModel(engine);
+  const models = [preferred];
   if (!models.includes("sana")) models.push("sana");
 
   for (let m = 0; m < models.length; m++) {
-    const url = liveUrl(prompt, seed, width, height, models[m]);
+    const url = liveUrl(tunePrompt(prompt, models[m]), seed, width, height, models[m]);
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         await renderLive(url);
@@ -202,12 +260,20 @@ export const studioProvider: ImageProvider = {
         16 + (i / req.count) * 48
       );
 
+      // Curated path — used when a configured engine failed; instant and beautiful.
+      if (req.curatedOnly) {
+        await sleep(600); // let the darkroom theatrics breathe
+        const { plate, finish, crop } = fallbackPick(req.prompt, seed, i);
+        images.push({ url: plate.url, seed, filter: finish.filter, focus: crop, fallback: true });
+        continue;
+      }
+
       try {
         const url = await developPlate(req.prompt, seed, width, height, req.engine);
         images.push({ url, seed });
       } catch {
-        const { plate, finish } = fallbackPick(req.prompt, seed, i);
-        images.push({ url: plate.url, seed, filter: finish.filter, focus: plate.focus, fallback: true });
+        const { plate, finish, crop } = fallbackPick(req.prompt, seed, i);
+        images.push({ url: plate.url, seed, filter: finish.filter, focus: crop, fallback: true });
       }
 
       // Keep batches friendly to the anonymous rate limit; the retry

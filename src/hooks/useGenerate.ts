@@ -87,7 +87,8 @@ export function useGenerate() {
           filter: img.filter,
           focus: img.focus,
           upscaled: opts.quality === "hq" ? true : undefined,
-          tag: opts.quality === "hq" ? "High-res render · 1536" : undefined,
+          tag: opts.quality === "hq" ? "High-res render · 1536" : img.fallback ? "Curated stand-in" : undefined,
+          standIn: img.fallback || undefined,
           baseId: base?.id,
           createdAt: now + i,
         }));
@@ -99,9 +100,9 @@ export function useGenerate() {
         if (settings.lockSeed && !opts.seed) useStudioStore.getState().patchForm({ seed });
 
         if (images.some((i) => i.fallback)) {
-          toast("Rendered by the free studio engine", {
+          toast("Curated stand-in served", {
             description:
-              "The DashScope call was blocked by the browser (CORS) or unreachable. Deploy the relay worker from the README and set VITE_DASHSCOPE_RELAY to shoot with your key.",
+              "The configured engine couldn't be reached from the browser, so a curated plate holds the slot. Deploy the relay worker (README) and set VITE_DASHSCOPE_RELAY to shoot with your key.",
             tone: "info",
           });
         } else {
@@ -116,7 +117,48 @@ export function useGenerate() {
           description: err instanceof Error ? err.message : "Something went wrong in the darkroom.",
           tone: "error",
         });
-        return [];
+        // Rescue — never leave the lightbox empty. Serve a curated stand-in
+        // plate while the engine issue is being sorted out.
+        try {
+          const { mockProvider } = await import("../lib/api");
+          const rescue = await mockProvider.generate(
+            {
+              prompt,
+              negative: settings.negative.trim() || undefined,
+              seed,
+              count,
+              ratio: settings.ratio,
+              engine: settings.engine,
+              curatedOnly: true,
+            },
+            (stage, pct) =>
+              useStudioStore.getState().setProgress(Math.max(50, Math.min(96, pct)), `Stand-in · ${stage}`)
+          );
+          const now = Date.now();
+          const gens: Generation[] = rescue.map((img, i) => ({
+            id: uid(),
+            prompt,
+            url: img.url,
+            seed: img.seed,
+            settings,
+            ratio: settings.ratio,
+            engine: settings.engine,
+            filter: img.filter,
+            focus: img.focus,
+            standIn: true,
+            tag: "Curated stand-in",
+            createdAt: now + i,
+          }));
+          useStudioStore.getState().addGenerations(gens);
+          useStudioStore.getState().setActive(gens[0].id);
+          toast("Stand-in plate served", {
+            description: "A curated plate holds the slot while the engine issue is resolved.",
+            tone: "info",
+          });
+          return gens;
+        } catch {
+          return [];
+        }
       } finally {
         clearInterval(timer);
         useStudioStore.getState().setGenerating(false);

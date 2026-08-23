@@ -286,7 +286,15 @@ export function ResultsPanel() {
                     className="h-full w-full border border-ink/20 object-cover shadow-[0_24px_60px_-24px_rgba(18,17,20,0.55)] dark:border-paper/20"
                     style={{
                       filter: gen.filter && gen.filter !== "none" ? gen.filter : undefined,
-                      objectPosition: gen.focus?.includes("close") ? "50% 20%" : "center",
+                      objectPosition:
+                        gen.focus === "top"
+                          ? "50% 12%"
+                          : gen.focus === "bottom"
+                            ? "50% 88%"
+                            : gen.focus?.includes("close")
+                              ? "50% 20%"
+                              : "center",
+                      transform: gen.standIn ? `scale(${1 + (gen.seed % 7) * 0.014})` : undefined,
                     }}
                   />
                   <span className="absolute left-3 top-3 rounded-sm bg-ink/65 px-2 py-1 font-mono text-[10px] font-bold uppercase tracking-[0.18em] text-paper backdrop-blur-sm">

@@ -50,6 +50,8 @@ export interface Generation {
   baseId?: string;
   favorite?: boolean;
   tag?: string;
+  /** Served from the curated stand-in pool because the live engine failed. */
+  standIn?: boolean;
   createdAt: number;
 }
 
