@@ -36,6 +36,7 @@ interface StudioState {
   stage: string;
 
   patchForm: (patch: Partial<FormState>) => void;
+  patchMuse: (patch: Partial<MuseDetails>) => void;
   randomizeSeed: () => void;
   setGenerating: (value: boolean) => void;
   setProgress: (pct: number, stage: string) => void;
@@ -105,9 +106,20 @@ export const useStudioStore = create<StudioState>()(
     }),
     {
       name: "editorial-ai:v4",
-      // Bumped on engine changes — old persisted archives (stale plates) are
-      // discarded so the studio always boots from a clean darkroom.
-      version: 2,
+      // Bumped on schema changes. The merge below back-fills new fields
+      // (the muse trait system) into older persisted sessions.
+      version: 3,
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<StudioState>;
+        const merged = { ...current, ...p };
+        const oldForm = (p.form ?? {}) as Partial<FormState>;
+        merged.form = {
+          ...DEFAULT_FORM,
+          ...oldForm,
+          muse: { ...EMPTY_MUSE, ...((oldForm.muse as Partial<MuseDetails> | undefined) ?? {}) },
+        };
+        return merged;
+      },
       partialize: (s) => ({
         form: s.form,
         generations: s.generations,

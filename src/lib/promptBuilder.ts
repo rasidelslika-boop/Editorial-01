@@ -20,12 +20,59 @@ export function cameraText(form: FormState): string {
   return opt?.prompt || "an 85mm ƒ/1.4 prime lens";
 }
 
+/**
+ * 01a–01i trait system → one flowing physical description.
+ * Unset traits are skipped, so locking a few and rolling the rest
+ * still reads naturally.
+ */
+export function museText(form: FormState): string {
+  const d = form.muse;
+  if (!d) return "";
+
+  const fmtH = (inches: number) => `${Math.floor(inches / 12)}'${inches % 12}"`;
+
+  const silhouette: string[] = [];
+  if (d.heightIn) silhouette.push(`${fmtH(d.heightIn)} tall`);
+  if (d.weightLb) silhouette.push(`${d.weightLb} lbs`);
+  if (d.bodyType) silhouette.push(`${d.bodyType} figure`);
+  if (d.bust) silhouette.push(`${d.bust} bust`);
+  if (d.waistIn) silhouette.push(`${d.waistIn}" waist`);
+  if (d.hipsIn) silhouette.push(`${d.hipsIn}" hips`);
+
+  const face: string[] = [];
+  if (d.faceShape) face.push(`${d.faceShape} face`);
+  if (d.faceFeatures) face.push(d.faceFeatures);
+  if (d.eyeShape && d.eyeColor) face.push(`${d.eyeShape} ${d.eyeColor} eyes`);
+  else if (d.eyeColor) face.push(`${d.eyeColor} eyes`);
+  if (d.skinTone) {
+    face.push(d.undertone ? `${d.skinTone} skin with a ${d.undertone} undertone` : `${d.skinTone} skin`);
+  }
+  if (d.skinDetail && d.skinDetail !== "none — flawless matte" && d.skinDetail !== "natural bare skin") {
+    face.push(d.skinDetail);
+  }
+
+  const hair: string[] = [];
+  if (d.hairstyle) hair.push(d.hairstyle);
+  if (d.hairColor) hair.push(d.hairColor);
+
+  const glam: string[] = [];
+  if (d.makeup) glam.push(`${d.makeup} makeup`);
+  if (d.distinctive && d.distinctive !== "none") glam.push(d.distinctive);
+
+  const bits = [silhouette.join(", "), face.join(", "), hair.join(", "), glam.join(", ")]
+    .filter(Boolean)
+    .join("; ");
+  const vibe = d.museVibe ? `an overall ${d.museVibe} presence` : "";
+  return [bits, vibe].filter(Boolean).join(" — ");
+}
+
 export function composePrompt(form: FormState, opts?: { baseLocked?: boolean }): string {
   const parts: string[] = [];
 
-  // Subject
-  const muse = form.model.trim() || "an enigmatic high-fashion model";
-  parts.push(`Fashion editorial photograph of ${muse}`);
+  // Subject — identity line plus the 01a–01i trait system.
+  const identity = form.model.trim() || "a breathtaking 21-year-old woman";
+  const traits = museText(form);
+  parts.push(`Fashion editorial photograph of ${identity}${traits ? `, ${traits}` : ""}`);
 
   if (form.expression.trim()) parts.push(form.expression.trim());
   if (form.outfit.trim()) parts.push(`wearing ${form.outfit.trim()}`);

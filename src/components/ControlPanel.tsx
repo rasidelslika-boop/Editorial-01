@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Camera, Dices, Layers, Lock, Unlock } from "lucide-react";
+import { Camera, Dices, Layers, Lock, Sparkles, Unlock, type LucideIcon } from "lucide-react";
 import { useStudioStore } from "../stores/editorial";
 import { useGenerate } from "../hooks/useGenerate";
 import {
@@ -14,9 +14,40 @@ import {
   RATIOS,
   REFERENCE_OPTIONS,
 } from "../lib/presets";
+import {
+  BODY_TYPES,
+  BUST_OPTIONS,
+  DISTINCTIVE_DETAILS,
+  EYE_COLORS,
+  EYE_SHAPES,
+  FACE_FEATURES,
+  FACE_SHAPES,
+  FANTASY_SETTINGS,
+  HAIRSTYLES_FANTASY,
+  HAIRSTYLES_TRENDY,
+  HAIR_COMBOS,
+  HAIR_COMBOS_FANTASY,
+  HEIGHT_OPTIONS,
+  HIPS_OPTIONS,
+  MAKEUP_LEVELS,
+  MUSE_VIBES,
+  RANDOM_POSES,
+  RANDOM_SETTINGS,
+  SKIN_DETAILS,
+  SKIN_TONES,
+  UNDERTONES,
+  WAIST_OPTIONS,
+  WEIGHT_OPTIONS,
+  fmtHeight,
+  pick,
+  rollMeasurements,
+  rollMuse,
+} from "../lib/randomizers";
 import { cn } from "../lib/utils";
 import { Button, Chip, Label, Section, SelectBox, Switch, inputCls, textareaCls } from "./ui";
 import { PromptPreview } from "./PromptPreview";
+import { useUIStore } from "../stores/ui";
+import type { ReactNode } from "react";
 
 function PresetChips({
   presets,
@@ -34,6 +65,295 @@ function PresetChips({
           {p.label}
         </Chip>
       ))}
+    </div>
+  );
+}
+
+/* ------------------------- Randomize / Fantasy controls ------------------------- */
+
+function RollButton({
+  icon: Icon,
+  label,
+  onRoll,
+  fantasy,
+  text,
+}: {
+  icon: LucideIcon;
+  label: string;
+  onRoll: () => void;
+  fantasy?: boolean;
+  text?: string;
+}) {
+  return (
+    <motion.button
+      whileTap={{ scale: 0.9, rotate: fantasy ? 0 : 12 }}
+      transition={{ type: "spring", stiffness: 500, damping: 22 }}
+      onClick={onRoll}
+      aria-label={label}
+      title={label}
+      className={cn(
+        "flex h-6 items-center gap-1 rounded-sm border px-1.5 font-mono text-[9px] font-bold uppercase tracking-[0.1em] transition-colors duration-150",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wine-500",
+        fantasy
+          ? "border-gilt-500/50 text-gilt-600 hover:border-gilt-500 hover:bg-gilt-500/10 dark:text-gilt-300"
+          : "border-wine-700/40 text-wine-700 hover:border-wine-700 hover:bg-wine-700/10 dark:border-gilt-400/40 dark:text-gilt-400 dark:hover:border-gilt-400 dark:hover:bg-gilt-400/10"
+      )}
+    >
+      <Icon className="h-3 w-3" />
+      {text ?? (fantasy ? "Fantasy" : "Random")}
+    </motion.button>
+  );
+}
+
+/** A numbered sub-block of the muse dossier — 01a, 01b, … 01i. */
+function MuseSub({ code, title, aside, children }: { code: string; title: string; aside?: ReactNode; children: ReactNode }) {
+  return (
+    <div className="overflow-hidden rounded-sm border border-ink/12 bg-ink/[0.02] transition-colors hover:border-ink/25 dark:border-paper/12 dark:bg-paper/[0.03] dark:hover:border-paper/25">
+      <div className="flex items-center justify-between gap-2 border-b border-ink/8 bg-ink/[0.025] px-2.5 py-1.5 dark:border-paper/8 dark:bg-paper/[0.025]">
+        <span className="flex items-baseline gap-2">
+          <span className="font-display wonk text-sm italic leading-none text-wine-700 dark:text-gilt-400">{code}</span>
+          <span className="smallcaps font-sans text-[11px] font-bold text-ink/65 dark:text-paper/60">{title}</span>
+        </span>
+        {aside ? <span className="flex items-center gap-1">{aside}</span> : null}
+      </div>
+      <div className="px-2.5 py-2">{children}</div>
+    </div>
+  );
+}
+
+/* ------------------------------ The muse dossier ------------------------------ */
+
+function MusePanel() {
+  const muse = useStudioStore((s) => s.form.muse);
+  const patchMuse = useStudioStore((s) => s.patchMuse);
+  const patchForm = useStudioStore((s) => s.patchForm);
+
+  const chips = (pool: readonly string[]) => pool.map((v) => ({ label: v, value: v }));
+  const numSel = (v: number | null) => (v != null ? String(v) : "");
+  const numSet = (key: "heightIn" | "weightLb" | "waistIn" | "hipsIn") => (raw: string) =>
+    patchMuse({ [key]: raw === "" ? null : Number(raw) } as never);
+
+  return (
+    <div className="mt-3 space-y-2">
+      {/* 01a — Hairstyle */}
+      <MuseSub
+        code="01a"
+        title="Hairstyle"
+        aside={
+          <>
+            <RollButton icon={Dices} label="Roll a trendy hairstyle" onRoll={() => patchMuse({ hairstyle: pick(HAIRSTYLES_TRENDY) })} />
+            <RollButton icon={Sparkles} label="Roll a fantasy hairstyle" fantasy onRoll={() => patchMuse({ hairstyle: pick(HAIRSTYLES_FANTASY) })} />
+          </>
+        }
+      >
+        <div className="flex flex-wrap gap-1.5">
+          {HAIRSTYLES_TRENDY.map((h) => (
+            <Chip key={h} active={muse.hairstyle === h} onClick={() => patchMuse({ hairstyle: h })} title={h}>
+              {h}
+            </Chip>
+          ))}
+        </div>
+        {muse.hairstyle && !HAIRSTYLES_TRENDY.includes(muse.hairstyle as never) ? (
+          <p className="mt-1.5 flex items-center gap-1.5 font-mono text-[10px] text-gilt-600 dark:text-gilt-300">
+            <Sparkles className="h-3 w-3" /> {muse.hairstyle}
+          </p>
+        ) : null}
+      </MuseSub>
+
+      {/* 01b — Body measurements (imperial) */}
+      <MuseSub
+        code="01b"
+        title="Body measurements · imperial"
+        aside={<RollButton icon={Dices} label="Roll all measurements" onRoll={() => patchMuse(rollMeasurements())} />}
+      >
+        <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-5">
+          <div>
+            <Label htmlFor="muse-height" className="!mb-1">Height</Label>
+            <SelectBox
+              ariaLabel="Height"
+              placeholder="—"
+              value={numSel(muse.heightIn)}
+              onChange={numSet("heightIn")}
+              options={HEIGHT_OPTIONS.map((o) => ({ id: o.id, label: o.label }))}
+              className="!text-[11px]"
+            />
+            {muse.heightIn != null ? <p className="mt-0.5 font-mono text-[9px] text-ink/40 dark:text-paper/35">{fmtHeight(muse.heightIn)}</p> : null}
+          </div>
+          <div>
+            <Label className="!mb-1">Weight</Label>
+            <SelectBox ariaLabel="Weight" placeholder="—" value={numSel(muse.weightLb)} onChange={numSet("weightLb")} options={WEIGHT_OPTIONS} />
+          </div>
+          <div>
+            <Label className="!mb-1">Bust</Label>
+            <SelectBox
+              ariaLabel="Bust size"
+              placeholder="—"
+              value={muse.bust}
+              onChange={(v) => patchMuse({ bust: v })}
+              options={BUST_OPTIONS}
+            />
+          </div>
+          <div>
+            <Label className="!mb-1">Waist</Label>
+            <SelectBox ariaLabel="Waist in inches" placeholder="—" value={numSel(muse.waistIn)} onChange={numSet("waistIn")} options={WAIST_OPTIONS} />
+          </div>
+          <div>
+            <Label className="!mb-1">Hips</Label>
+            <SelectBox ariaLabel="Hips in inches" placeholder="—" value={numSel(muse.hipsIn)} onChange={numSet("hipsIn")} options={HIPS_OPTIONS} />
+          </div>
+        </div>
+      </MuseSub>
+
+      {/* 01c — Hair colour + texture */}
+      <MuseSub
+        code="01c"
+        title="Hair colour + texture"
+        aside={
+          <>
+            <RollButton icon={Dices} label="Roll hair colour and texture" onRoll={() => patchMuse({ hairColor: pick(HAIR_COMBOS) })} />
+            <RollButton icon={Sparkles} label="Roll a fantasy hair colour" fantasy onRoll={() => patchMuse({ hairColor: pick(HAIR_COMBOS_FANTASY) })} />
+          </>
+        }
+      >
+        <div className="flex flex-wrap gap-1.5">
+          {HAIR_COMBOS.map((c) => (
+            <Chip key={c} active={muse.hairColor === c} onClick={() => patchMuse({ hairColor: c })} title={c}>
+              {c}
+            </Chip>
+          ))}
+        </div>
+        {muse.hairColor && !HAIR_COMBOS.includes(muse.hairColor as never) ? (
+          <p className="mt-1.5 flex items-center gap-1.5 font-mono text-[10px] text-gilt-600 dark:text-gilt-300">
+            <Sparkles className="h-3 w-3" /> {muse.hairColor}
+          </p>
+        ) : null}
+      </MuseSub>
+
+      {/* 01d — Eyes */}
+      <MuseSub
+        code="01d"
+        title="Eyes"
+        aside={
+          <RollButton icon={Dices} label="Roll eye colour and shape" onRoll={() => patchMuse({ eyeColor: pick(EYE_COLORS), eyeShape: pick(EYE_SHAPES) })} />
+        }
+      >
+        <Label className="!mb-1">Colour</Label>
+        <div className="flex flex-wrap gap-1.5">
+          {EYE_COLORS.map((c) => (
+            <Chip key={c} active={muse.eyeColor === c} onClick={() => patchMuse({ eyeColor: c })}>
+              {c}
+            </Chip>
+          ))}
+        </div>
+        <Label className="!mb-1 mt-2">Shape</Label>
+        <div className="flex flex-wrap gap-1.5">
+          {EYE_SHAPES.map((s) => (
+            <Chip key={s} active={muse.eyeShape === s} onClick={() => patchMuse({ eyeShape: s })}>
+              {s}
+            </Chip>
+          ))}
+        </div>
+      </MuseSub>
+
+      {/* 01e — Complexion */}
+      <MuseSub
+        code="01e"
+        title="Skin tone / complexion"
+        aside={
+          <RollButton
+            icon={Dices}
+            label="Roll complexion"
+            onRoll={() => patchMuse({ skinTone: pick(SKIN_TONES), undertone: pick(UNDERTONES), skinDetail: pick(SKIN_DETAILS) })}
+          />
+        }
+      >
+        <div className="flex flex-wrap gap-1.5">
+          {SKIN_TONES.map((t) => (
+            <Chip key={t} active={muse.skinTone === t} onClick={() => patchMuse({ skinTone: t })}>
+              {t}
+            </Chip>
+          ))}
+        </div>
+        <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+          <SelectBox ariaLabel="Undertone" placeholder="Undertone —" value={muse.undertone} onChange={(v) => patchMuse({ undertone: v })} options={UNDERTONES.map((u) => ({ id: u, label: `${u} undertone` }))} />
+          <SelectBox ariaLabel="Skin finish" placeholder="Finish —" value={muse.skinDetail} onChange={(v) => patchMuse({ skinDetail: v })} options={SKIN_DETAILS.map((s) => ({ id: s, label: s }))} />
+        </div>
+      </MuseSub>
+
+      {/* 01f — Face shape & features */}
+      <MuseSub
+        code="01f"
+        title="Face shape & features"
+        aside={
+          <RollButton
+            icon={Dices}
+            label="Roll face shape, features and makeup"
+            onRoll={() => patchMuse({ faceShape: pick(FACE_SHAPES), faceFeatures: pick(FACE_FEATURES), makeup: pick(MAKEUP_LEVELS) })}
+          />
+        }
+      >
+        <div className="flex flex-wrap gap-1.5">
+          {FACE_SHAPES.map((f) => (
+            <Chip key={f} active={muse.faceShape === f} onClick={() => patchMuse({ faceShape: f })}>
+              {f}
+            </Chip>
+          ))}
+        </div>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {FACE_FEATURES.map((f) => (
+            <Chip key={f} active={muse.faceFeatures === f} onClick={() => patchMuse({ faceFeatures: f })}>
+              {f}
+            </Chip>
+          ))}
+        </div>
+        <div className="mt-2">
+          <Label className="!mb-1">Makeup level</Label>
+          <div className="flex flex-wrap gap-1.5">
+            {MAKEUP_LEVELS.map((m) => (
+              <Chip key={m} active={muse.makeup === m} onClick={() => patchMuse({ makeup: m })}>
+                {m}
+              </Chip>
+            ))}
+          </div>
+        </div>
+      </MuseSub>
+
+      {/* 01g — Body type */}
+      <MuseSub code="01g" title="Body type" aside={<RollButton icon={Dices} label="Roll body type" onRoll={() => patchMuse({ bodyType: pick(BODY_TYPES) })} />}>
+        <div className="flex flex-wrap gap-1.5">
+          {BODY_TYPES.map((b) => (
+            <Chip key={b} active={muse.bodyType === b} onClick={() => patchMuse({ bodyType: b })}>
+              {b}
+            </Chip>
+          ))}
+        </div>
+      </MuseSub>
+
+      {/* 01h — Distinctive details */}
+      <MuseSub
+        code="01h"
+        title="Distinctive details"
+        aside={<RollButton icon={Dices} label="Roll a distinctive detail" onRoll={() => patchMuse({ distinctive: pick(DISTINCTIVE_DETAILS) })} />}
+      >
+        <div className="flex flex-wrap gap-1.5">
+          {DISTINCTIVE_DETAILS.map((d) => (
+            <Chip key={d} active={muse.distinctive === d} onClick={() => patchMuse({ distinctive: d })}>
+              {d}
+            </Chip>
+          ))}
+        </div>
+      </MuseSub>
+
+      {/* 01i — Overall muse vibe */}
+      <MuseSub code="01i" title="Overall muse vibe" aside={<RollButton icon={Dices} label="Roll the muse vibe" onRoll={() => patchMuse({ museVibe: pick(MUSE_VIBES) })} />}>
+        <div className="flex flex-wrap gap-1.5">
+          {MUSE_VIBES.map((v) => (
+            <Chip key={v} active={muse.museVibe === v} onClick={() => patchMuse({ museVibe: v })}>
+              {v}
+            </Chip>
+          ))}
+        </div>
+      </MuseSub>
     </div>
   );
 }
@@ -197,28 +517,42 @@ function GenerateBar() {
 export function ControlPanel() {
   const form = useStudioStore((s) => s.form);
   const patchForm = useStudioStore((s) => s.patchForm);
+  const patchMuse = useStudioStore((s) => s.patchMuse);
+  const toast = useGenerateToast();
 
-  const pick = (key: keyof typeof form) => (value: string) => patchForm({ [key]: value } as never);
+  const pickField = (key: keyof typeof form) => (value: string) => patchForm({ [key]: value } as never);
+
+  const recast = () => {
+    const rolled = rollMuse();
+    patchForm({ model: rolled.model, muse: rolled.details });
+    toast("The muse has been re-cast", { description: rolled.model, tone: "success" });
+  };
 
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto pb-2">
         {/* 01 — The Muse */}
-        <Section no="01" title="The Muse" hint="Cast your model">
-          <PresetChips presets={MODEL_PRESETS} onPick={pick("model")} activeValue={form.model} />
+        <Section
+          no="01"
+          title="The Muse"
+          hint="Cast your model · full trait dossier"
+          aside={<RollButton icon={Dices} label="Re-cast the entire muse" onRoll={recast} text="Re-cast" />}
+        >
+          <PresetChips presets={MODEL_PRESETS} onPick={pickField("model")} activeValue={form.model} />
           <textarea
             aria-label="Model description"
             value={form.model}
             onChange={(e) => patchForm({ model: e.target.value })}
-            rows={3}
+            rows={2}
             className={textareaCls}
-            placeholder="Age, ethnicity, gender presentation, body type, skin tone, features, hair, makeup…"
+            placeholder="Identity line — e.g. a breathtaking 21-year-old Brazilian woman…"
           />
+          <MusePanel />
           <div className="mt-3">
             <Label>Expression</Label>
             <PresetChips
               presets={EXPRESSION_PRESETS.map((v) => ({ label: v.split(",")[0].split(" ")[0], value: v }))}
-              onPick={pick("expression")}
+              onPick={pickField("expression")}
               activeValue={form.expression}
             />
             <input
@@ -232,8 +566,18 @@ export function ControlPanel() {
         </Section>
 
         {/* 02 — The Setting */}
-        <Section no="02" title="The Setting" hint="Scout the location">
-          <PresetChips presets={LOCATION_PRESETS} onPick={pick("location")} activeValue={form.location} />
+        <Section
+          no="02"
+          title="The Setting"
+          hint="Scout the location"
+          aside={
+            <>
+              <RollButton icon={Dices} label="Roll a random location" onRoll={() => patchForm({ location: pick(RANDOM_SETTINGS) })} />
+              <RollButton icon={Sparkles} label="Roll a wild fantasy location" fantasy onRoll={() => patchForm({ location: pick(FANTASY_SETTINGS) })} />
+            </>
+          }
+        >
+          <PresetChips presets={LOCATION_PRESETS} onPick={pickField("location")} activeValue={form.location} />
           <textarea
             aria-label="Location and setting"
             value={form.location}
@@ -257,8 +601,13 @@ export function ControlPanel() {
         </Section>
 
         {/* 04 — The Pose */}
-        <Section no="04" title="The Pose" hint="Direct the composition">
-          <PresetChips presets={POSE_PRESETS} onPick={pick("pose")} activeValue={form.pose} />
+        <Section
+          no="04"
+          title="The Pose"
+          hint="Direct the composition"
+          aside={<RollButton icon={Dices} label="Roll a random pose" onRoll={() => patchForm({ pose: pick(RANDOM_POSES) })} />}
+        >
+          <PresetChips presets={POSE_PRESETS} onPick={pickField("pose")} activeValue={form.pose} />
           <textarea
             aria-label="Pose and composition"
             value={form.pose}
@@ -277,7 +626,7 @@ export function ControlPanel() {
               <SelectBox
                 ariaLabel="Lighting style"
                 value={form.lighting}
-                onChange={pick("lighting")}
+                onChange={pickField("lighting")}
                 options={LIGHTING_OPTIONS.map((o) => ({ id: o.id, label: o.label }))}
               />
             </div>
@@ -286,7 +635,7 @@ export function ControlPanel() {
               <SelectBox
                 ariaLabel="Camera and lens"
                 value={form.camera}
-                onChange={pick("camera")}
+                onChange={pickField("camera")}
                 options={CAMERA_OPTIONS.map((o) => ({ id: o.id, label: o.label }))}
               />
             </div>
@@ -316,7 +665,7 @@ export function ControlPanel() {
               <SelectBox
                 ariaLabel="Style reference"
                 value={form.reference}
-                onChange={pick("reference")}
+                onChange={pickField("reference")}
                 options={REFERENCE_OPTIONS.map((r) => ({ id: r, label: r === "none" ? "— None —" : r }))}
               />
             </div>
@@ -330,4 +679,9 @@ export function ControlPanel() {
       <GenerateBar />
     </div>
   );
+}
+
+/* Local alias so the panel can toast without extra wiring. */
+function useGenerateToast() {
+  return useUIStore((s) => s.toast);
 }

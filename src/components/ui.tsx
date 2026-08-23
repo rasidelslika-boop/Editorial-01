@@ -76,23 +76,28 @@ export function Section({
   no,
   title,
   hint,
+  aside,
   children,
   className,
 }: {
   no: string;
   title: string;
   hint?: string;
+  aside?: ReactNode;
   children: ReactNode;
   className?: string;
 }) {
   return (
     <section className={cn("border-t border-ink/10 px-5 py-5 dark:border-paper/10 sm:px-6", className)}>
-      <header className="mb-3.5 flex items-baseline gap-3">
-        <span className="font-display wonk text-2xl italic leading-none text-wine-700 dark:text-gilt-400">{no}</span>
-        <div className="min-w-0">
-          <h3 className="font-display text-base font-semibold leading-tight">{title}</h3>
-          {hint ? <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45 dark:text-paper/40">{hint}</p> : null}
+      <header className="mb-3.5 flex items-start justify-between gap-3">
+        <div className="flex items-baseline gap-3">
+          <span className="font-display wonk text-2xl italic leading-none text-wine-700 dark:text-gilt-400">{no}</span>
+          <div className="min-w-0">
+            <h3 className="font-display text-base font-semibold leading-tight">{title}</h3>
+            {hint ? <p className="mt-0.5 font-mono text-[10px] uppercase tracking-[0.18em] text-ink/45 dark:text-paper/40">{hint}</p> : null}
+          </div>
         </div>
+        {aside ? <div className="flex shrink-0 items-center gap-1.5 pt-0.5">{aside}</div> : null}
       </header>
       {children}
     </section>
@@ -124,12 +129,14 @@ export function SelectBox({
   options,
   ariaLabel,
   className,
+  placeholder,
 }: {
   value: string;
   onChange: (v: string) => void;
   options: { id: string; label: string }[];
   ariaLabel: string;
   className?: string;
+  placeholder?: string;
 }) {
   return (
     <div className={cn("relative", className)}>
@@ -139,6 +146,11 @@ export function SelectBox({
         onChange={(e) => onChange(e.target.value)}
         className={cn(inputCls, "appearance-none pr-9 font-mono text-xs")}
       >
+        {placeholder !== undefined ? (
+          <option value="" disabled className="bg-paper text-ink/50 dark:bg-ink dark:text-paper/50">
+            {placeholder}
+          </option>
+        ) : null}
         {options.map((o) => (
           <option key={o.id} value={o.id} className="bg-paper text-ink dark:bg-ink dark:text-paper">
             {o.label}

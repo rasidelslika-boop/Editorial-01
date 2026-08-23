@@ -104,6 +104,7 @@ export function ResultsPanel() {
   const patchForm = useStudioStore((s) => s.patchForm);
   const form = useStudioStore((s) => s.form);
   const generating = useStudioStore((s) => s.generating);
+  const clearArchive = useStudioStore((s) => s.clearArchive);
 
   const { generate, progress, stage } = useGenerate();
   const toast = useUIStore((s) => s.toast);
@@ -114,6 +115,19 @@ export function ResultsPanel() {
   const [packing, setPacking] = useState(false);
   const [packStep, setPackStep] = useState<{ done: number; total: number } | null>(null);
   const [archive, setArchive] = useState<{ href: string; name: string; saved: number; failed: number } | null>(null);
+  const [clearArm, setClearArm] = useState(false);
+
+  /** Two-step clear — first click arms, second click wipes the contact sheet. */
+  const handleClear = () => {
+    if (!clearArm) {
+      setClearArm(true);
+      setTimeout(() => setClearArm(false), 2600);
+      return;
+    }
+    clearArchive();
+    setClearArm(false);
+    toast("Contact sheet cleared", { description: "Every plate from this session has been discarded.", tone: "info" });
+  };
 
   /** Save the active plate — the grade you see on screen is baked into the file. */
   const savePlate = async (kind: "png" | "hq") => {
@@ -544,6 +558,21 @@ export function ResultsPanel() {
             <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink/40 dark:text-paper/35">
               Contact sheet · {generations.length} plate{generations.length === 1 ? "" : "s"}
             </p>
+            <div className="flex items-center gap-1.5">
+            <button
+              onClick={handleClear}
+              aria-label={clearArm ? "Confirm — clear every plate" : "Clear the contact sheet"}
+              className={cn(
+                "flex h-7 items-center gap-1.5 rounded-sm border px-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.14em] transition-all duration-150",
+                "hover:-translate-y-px",
+                clearArm
+                  ? "border-wine-600 bg-wine-600/10 text-wine-600 dark:border-wine-400 dark:text-wine-300"
+                  : "border-ink/20 text-ink/65 hover:border-wine-700 hover:text-wine-700 dark:border-paper/20 dark:text-paper/60 dark:hover:border-wine-400 dark:hover:text-wine-300"
+              )}
+            >
+              <Trash2 className="h-3 w-3" />
+              {clearArm ? "Sure?" : "Clear"}
+            </button>
             <button
               onClick={() => void archiveSession()}
               disabled={packing}
@@ -559,6 +588,7 @@ export function ResultsPanel() {
               {packing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
               {packing ? (packStep ? `Packing ${packStep.done}/${packStep.total}` : "Packing…") : "Archive ZIP"}
             </button>
+            </div>
           </div>
 
           {/* Archive ready — the manual anchor is the one save trigger no browser blocks. */}
