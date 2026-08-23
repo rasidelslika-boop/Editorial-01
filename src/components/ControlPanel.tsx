@@ -78,7 +78,7 @@ import {
   rollSkinDetail,
 } from "../lib/randomizers";
 import { aiIdentity, aiMuseBlock, aiTrait } from "../lib/aiTraits";
-import { bodySilhouette, composeScenePlate } from "../lib/promptBuilder";
+import { bodySilhouette, composeScenePlate, reframeAnchorPrompt } from "../lib/promptBuilder";
 import { cn } from "../lib/utils";
 import { Button, Chip, Label, Section, SelectBox, Switch, inputCls, textareaCls } from "./ui";
 import { PromptPreview } from "./PromptPreview";
@@ -802,8 +802,13 @@ function GenerateBar() {
       // every frame continues the image on screen instead of redrawing a
       // fresh (or old) one.
       seed: anchor?.seed,
+      // Stand-ins (engine unreachable) become variations of THIS plate.
+      anchorUrl: anchor?.url,
       perPlate: frames.map((f) => ({ pose: f.pose, expression: f.expression, negative: seriesNegative })),
-      compose: (ps, i) => composeScenePlate(ps, frames[i]),
+      // Continue the anchored plate's EXACT prompt with only the pose /
+      // expression swapped — minimal lexical diff + same seed = same scene.
+      compose: (ps, i) =>
+        anchor ? reframeAnchorPrompt(anchor.prompt, anchor.settings, frames[i]) : composeScenePlate(ps, frames[i]),
       seedStep: 0,
     });
   };
@@ -842,8 +847,10 @@ function GenerateBar() {
       // Anchor plate's render seed — keeps the scene identical to the image
       // on screen while the wardrobe steps.
       seed: anchor?.seed,
+      anchorUrl: anchor?.url,
       perPlate,
-      compose: (ps, i) => composeScenePlate(ps, frames[i], { wardrobeShifts: true }),
+      compose: (ps, i) =>
+        anchor ? reframeAnchorPrompt(anchor.prompt, anchor.settings, frames[i]) : composeScenePlate(ps, frames[i], { wardrobeShifts: true }),
       seedStep: 0,
     });
   };

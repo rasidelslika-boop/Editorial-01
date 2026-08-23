@@ -28,6 +28,11 @@ export interface GenerateRequest {
   quality?: "standard" | "hq";
   /** Skip live rendering — serve straight from the curated plate pool. */
   curatedOnly?: boolean;
+  /**
+   * The anchored plate (Series / Seq). When the live engine can't render,
+   * stand-ins become darkroom variations of THIS image — not the stock pool.
+   */
+  anchorUrl?: string;
 }
 
 export type ProgressFn = (stage: string, pct: number) => void;
@@ -264,7 +269,8 @@ export const studioProvider: ImageProvider = {
       if (req.curatedOnly) {
         await sleep(600); // let the darkroom theatrics breathe
         const { plate, finish, crop } = fallbackPick(req.prompt, seed, i);
-        images.push({ url: plate.url, seed, filter: finish.filter, focus: crop, fallback: true });
+        // With an anchor, the stand-in is a crop/grade variation of the loaded plate.
+        images.push({ url: req.anchorUrl ?? plate.url, seed, filter: finish.filter, focus: crop, fallback: true });
         continue;
       }
 
@@ -273,7 +279,7 @@ export const studioProvider: ImageProvider = {
         images.push({ url, seed });
       } catch {
         const { plate, finish, crop } = fallbackPick(req.prompt, seed, i);
-        images.push({ url: plate.url, seed, filter: finish.filter, focus: crop, fallback: true });
+        images.push({ url: req.anchorUrl ?? plate.url, seed, filter: finish.filter, focus: crop, fallback: true });
       }
 
       // Keep batches friendly to the anonymous rate limit; the retry

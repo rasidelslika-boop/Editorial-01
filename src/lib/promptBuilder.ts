@@ -247,6 +247,39 @@ export function composeScenePlate(
   return `${prompt} [${form.ratio} frame]`;
 }
 
+/**
+ * Series/Seq anchor continuation. Starts from the anchored plate's EXACT
+ * prompt and swaps only the pose / expression clauses. A minimal lexical
+ * diff combined with the identical seed is what genuinely continues the
+ * loaded plate's scene — a semantic rewrite (same facts, new words) makes
+ * the model redraw a different picture.
+ */
+export function reframeAnchorPrompt(anchorPrompt: string, s: FormState, frame: SeriesFrame): string {
+  const motion = frame.motion ? `, ${frame.motion}` : "";
+  let p = anchorPrompt;
+  let swapped = false;
+
+  const pose = (s.pose ?? "").trim();
+  if (pose.length > 3 && p.includes(pose)) {
+    p = p.replace(pose, `${frame.framing}, ${frame.pose}${motion}`);
+    swapped = true;
+  }
+  const expr = (s.expression ?? "").trim();
+  if (expr.length > 3 && p.includes(expr)) {
+    p = p.replace(expr, frame.expression);
+    swapped = true;
+  }
+
+  if (!swapped) {
+    // Free-write or hand-edited brief — append the frame direction while
+    // respecting any engine dialect tail (e.g. "--ar 4:5 --stylize …").
+    const tail = p.indexOf(" --");
+    const insert = `, in this photograph: a ${frame.framing}, ${frame.pose}${motion}, ${frame.expression}`;
+    p = tail >= 0 ? p.slice(0, tail) + insert + p.slice(tail) : p + insert;
+  }
+  return p;
+}
+
 /** The prompt actually sent — honours free-write prompt-engineering mode. */
 export function finalPrompt(form: FormState, opts?: { baseLocked?: boolean }): string {
   if (form.promptMode === "custom" && form.customPrompt.trim()) {

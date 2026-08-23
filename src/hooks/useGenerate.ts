@@ -36,6 +36,8 @@ interface GenerateOptions {
   compose?: (s: FormState, i: number) => string;
   /** Seed offset between plates. Series uses 0 (same seed anchors the backdrop). */
   seedStep?: number;
+  /** The anchored plate — stand-ins become variations of this image. */
+  anchorUrl?: string;
 }
 
 export function useGenerate() {
@@ -101,6 +103,7 @@ export function useGenerate() {
                 ratio: ps.ratio,
                 engine: ps.engine,
                 quality: opts.quality,
+                anchorUrl: opts.anchorUrl,
               },
               progressCb
             );
@@ -120,6 +123,7 @@ export function useGenerate() {
               ratio: settings.ratio,
               engine: settings.engine,
               quality: opts.quality,
+              anchorUrl: opts.anchorUrl,
             },
             progressCb
           );
@@ -151,9 +155,10 @@ export function useGenerate() {
         if (settings.lockSeed && !opts.seed) useStudioStore.getState().patchForm({ seed });
 
         if (images.some((i) => i.fallback)) {
-          toast("Curated stand-in served", {
-            description:
-              "The configured engine couldn't be reached from the browser, so a curated plate holds the slot. Deploy the relay worker (README) and set VITE_DASHSCOPE_RELAY to shoot with your key.",
+          toast(opts.anchorUrl ? "Stand-ins developed from the anchored plate" : "Curated stand-in served", {
+            description: opts.anchorUrl
+              ? "The engine couldn't render live, so each frame is a darkroom variation — new crop and grade — of the plate you anchored to."
+              : "The configured engine couldn't be reached from the browser, so a curated plate holds the slot. Deploy the relay worker (README) and set VITE_DASHSCOPE_RELAY to shoot with your key.",
             tone: "info",
           });
         } else {
@@ -186,6 +191,7 @@ export function useGenerate() {
               ratio: settings.ratio,
               engine: settings.engine,
               curatedOnly: true,
+              anchorUrl: opts.anchorUrl,
             },
             (stage, pct) =>
               useStudioStore.getState().setProgress(Math.max(50, Math.min(96, pct)), `Stand-in · ${stage}`)
