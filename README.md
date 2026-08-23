@@ -20,22 +20,28 @@ npm run build      # production build → dist/
 npm run typecheck  # strict TS check
 ```
 
-Out of the box the app runs on the **mock darkroom** — a deterministic local
-engine that develops plates from a bundled editorial image pool, so every feature
-is fully usable with zero configuration.
+Out of the box the app runs on the **studio engine** — every plate is rendered
+live from your exact prompt via the free [Pollinations](https://pollinations.ai)
+image API (Flux model, no key required), so each generation is a unique image.
+If the live engine is unreachable, it falls back to a bundled editorial plate
+pool so the studio never dead-ends.
 
 ---
 
-## Plugging in a real image API
+## Plugging in a direct image API
 
 The image layer lives in `src/lib/api/`:
 
 ```
 src/lib/api/
-├── index.ts       # resolveProvider() — routes engines → providers, falls back to mock
-├── mock.ts        # ImageProvider interface + the mock darkroom
+├── index.ts       # resolveProvider() — routes engines → providers (studio engine default)
+├── mock.ts        # ImageProvider interface + the studio engine (Pollinations + offline fallback)
 └── providers.ts   # DALL·E 3, Flux (BFL), and custom-endpoint implementations
 ```
+
+When credentials are present, engines are routed to their direct APIs; without
+keys they use the free studio engine. Either way, upscales are real re-renders
+at higher resolution and every seed/prompt combination is reproducible.
 
 All providers implement the same `ImageProvider` interface, so swapping engines
 never touches the UI:
@@ -64,11 +70,11 @@ VITE_BFL_API_KEY=...
 VITE_CUSTOM_ENDPOINT=https://your-api.example.com/generate
 ```
 
-`resolveProvider(engine)` automatically uses the live provider when its key is
-present, and otherwise falls back to the mock (the UI surfaces a one-time toast
-telling you so). Keys are read at build time via `import.meta.env` — for a real
-deployment, proxy requests through a server so keys are never shipped to the
-browser.
+`resolveProvider(engine)` automatically uses the direct provider when its key is
+present, and otherwise uses the free studio engine (the UI surfaces a one-time
+toast telling you which route is active). Keys are read at build time via
+`import.meta.env` — for a real deployment, proxy requests through a server so
+keys are never shipped to the browser.
 
 ### 2. Engine → provider map
 
@@ -78,7 +84,7 @@ browser.
 | Flux Dev            | `api.bfl.ml/v1/flux-dev`          | `VITE_BFL_API_KEY`     |
 | Stable Diffusion 3.5| `api.bfl.ml/v1/sd3.5`             | `VITE_BFL_API_KEY`     |
 | DALL·E 3            | `api.openai.com/v1/images/...`    | `VITE_OPENAI_API_KEY`  |
-| Midjourney v6 style | mock (no official API — route via a relay or swap the provider) | — |
+| Midjourney v6 style | studio engine (no official API — route via a relay or swap the provider) | — |
 | Custom endpoint     | your POST endpoint                | `VITE_CUSTOM_ENDPOINT` |
 
 ### 3. Adding a new provider

@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { FormState, Generation } from "../types";
 import { NEGATIVE_DEFAULT } from "../lib/presets";
-import { randomSeed, uid } from "../lib/utils";
+import { randomSeed } from "../lib/utils";
 
 export const DEFAULT_FORM: FormState = {
   model: "",
@@ -44,7 +44,6 @@ interface StudioState {
   toggleBase: (id: string) => void;
   setBatchCount: (n: number) => void;
   loadGeneration: (id: string) => void;
-  duplicateAsUpscale: (id: string) => void;
   clearArchive: () => void;
 }
 
@@ -96,20 +95,6 @@ export const useStudioStore = create<StudioState>()(
         const gen = get().generations.find((g) => g.id === id);
         if (!gen) return;
         set({ form: { ...gen.settings }, activeId: id });
-      },
-
-      duplicateAsUpscale: (id) => {
-        const gen = get().generations.find((g) => g.id === id);
-        if (!gen || gen.upscaled) return;
-        const upscaled: Generation = {
-          ...gen,
-          id: uid(),
-          upscaled: true,
-          tag: "Upscaled · 4K",
-          createdAt: Date.now(),
-          favorite: false,
-        };
-        set((s) => ({ generations: [upscaled, ...s.generations].slice(0, 80), activeId: upscaled.id }));
       },
 
       clearArchive: () => set({ generations: [], activeId: null, baseId: null }),

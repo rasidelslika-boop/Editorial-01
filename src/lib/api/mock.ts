@@ -1,105 +1,184 @@
-import type { EngineId, RatioId } from "../../types";
 import { hashString, mulberry32 } from "../utils";
 
 /* ------------------------------------------------------------------ */
-/*  The mock darkroom.                                                 */
-/*  Develops plates from a bundled editorial image pool so the whole   */
-/*  product is usable without keys. Swap in a real provider in         */
-/*  ./providers.ts and ./index.ts — the interface is identical.        */
+/*  The Studio engine.                                                 */
+/*  Primary: renders live from your exact prompt via the free          */
+/*  Pollinations image API (no key required) — every plate is unique.  */
+/*  Fallback: a bundled editorial plate pool, used only when the live  */
+/*  engine is unreachable, so the studio never dead-ends.              */
 /* ------------------------------------------------------------------ */
 
 export interface ProviderImage {
   url: string;
   seed: number;
+  /** Darkroom finish, applied to fallback plates only. */
   filter?: string;
   focus?: string;
+  /** True when served from the offline plate pool. */
+  fallback?: boolean;
 }
 
 export interface GenerateRequest {
   prompt: string;
   negative?: string;
-  ratio: RatioId;
   seed: number;
   count: number;
-  engine: EngineId;
+  ratio: string;
+  quality?: "standard" | "hq";
 }
 
 export type ProgressFn = (stage: string, pct: number) => void;
 
 export interface ImageProvider {
-  readonly id: string;
-  readonly label: string;
-  readonly mock?: boolean;
+  id: string;
+  label: string;
+  mock?: boolean;
   generate(req: GenerateRequest, onProgress?: ProgressFn): Promise<ProviderImage[]>;
 }
 
-const POOL: { src: string; alt: string }[] = [
-  { src: "https://image.qwenlm.ai/generated-images/41ebc34b-8399-48bd-ab44-b01e43abc386/_result.png", alt: "Crimson silk gown on a Parisian rooftop at golden hour" },
-  { src: "https://image.qwenlm.ai/generated-images/bc1991cb-782e-4320-8163-21308a9f9809/_result.png", alt: "Androgynous model in a sculptural blazer, white infinity studio" },
-  { src: "https://image.qwenlm.ai/generated-images/f4b1585b-8414-4cc6-84da-63610920b834/_result.png", alt: "Iridescent trench in a neon Tokyo backstreet" },
-  { src: "https://image.qwenlm.ai/generated-images/ca35633e-c37b-492f-be01-2ffde56a3a9a/_result.png", alt: "Wool coat on an Icelandic black sand beach" },
-  { src: "https://image.qwenlm.ai/generated-images/d596e67b-8906-4be4-bc49-705f66e90256/_result.png", alt: "Close-up beauty portrait with gold leaf makeup" },
-  { src: "https://image.qwenlm.ai/generated-images/82fe1630-a603-4320-9653-2473c389d055/_result.png", alt: "Ivory suit in a brutalist concrete atrium" },
-  { src: "https://image.qwenlm.ai/generated-images/2a8816ad-ee6f-40b0-93d0-3a2824fe132d/_result.png", alt: "Black and white portrait with a wide-brim hat" },
-  { src: "https://image.qwenlm.ai/generated-images/08ce0028-b121-4986-b0b9-62b7fbc937e6/_result.png", alt: "Silver slip dress on mirror salt flats at dusk" },
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+/* ---------------------------- Offline plate pool ---------------------------- */
+
+const PLATE_POOL = [
+  {
+    url: "https://image.qwenlm.ai/generated-images/41ebc34b-8399-48bd-ab44-b01e43abc386/_result.png",
+    focus: "Crimson silk · Paris rooftop",
+  },
+  {
+    url: "https://image.qwenlm.ai/generated-images/bc1991cb-782e-4320-8163-21308a9f9809/_result.png",
+    focus: "Sculptural tailoring · white cove",
+  },
+  {
+    url: "https://image.qwenlm.ai/generated-images/f4b1585b-8414-4cc6-84da-63610920b834/_result.png",
+    focus: "Iridescent trench · Tokyo rain",
+  },
+  {
+    url: "https://image.qwenlm.ai/generated-images/ca35633e-c37b-492f-be01-2ffde56a3a9a/_result.png",
+    focus: "Charcoal wool · black sand",
+  },
+  {
+    url: "https://image.qwenlm.ai/generated-images/d596e67b-8906-4be4-bc49-705f66e90256/_result.png",
+    focus: "Gold-leaf beauty crop",
+  },
+  {
+    url: "https://image.qwenlm.ai/generated-images/82fe1630-a603-4320-9653-2473c389d055/_result.png",
+    focus: "Ivory suit · concrete atrium",
+  },
+  {
+    url: "https://image.qwenlm.ai/generated-images/2a8816ad-ee6f-40b0-93d0-3a2824fe132d/_result.png",
+    focus: "Silver updo · noir glamour",
+  },
+  {
+    url: "https://image.qwenlm.ai/generated-images/08ce0028-b121-4986-b0b9-62b7fbc937e6/_result.png",
+    focus: "Liquid silver · mirror salt flats",
+  },
 ];
 
 const FINISHES = [
-  "none",
-  "saturate(1.08) contrast(1.04)",
-  "sepia(0.14) saturate(1.1)",
-  "contrast(1.08) brightness(0.98)",
-  "hue-rotate(-8deg) saturate(1.06)",
-  "brightness(1.05) saturate(0.94)",
-  "contrast(0.96) saturate(1.12) brightness(1.03)",
+  { label: "None", filter: "none" },
+  { label: "Kodak Portra", filter: "saturate(1.06) contrast(1.03) sepia(0.09) hue-rotate(-4deg)" },
+  { label: "Cinestill 800T", filter: "saturate(1.18) contrast(1.1) hue-rotate(8deg) brightness(0.98)" },
+  { label: "Ilford HP5", filter: "grayscale(1) contrast(1.14) brightness(1.03)" },
+  { label: "Faded Vogue '96", filter: "contrast(0.94) brightness(1.06) sepia(0.16) saturate(0.88)" },
+  { label: "Chrome Gloss", filter: "saturate(1.3) contrast(1.16) brightness(1.02)" },
 ];
 
-const FOCUSES = ["50% 22%", "50% 38%", "50% 50%", "32% 40%", "68% 30%", "50% 62%"];
+function fallbackPick(prompt: string, seed: number, index: number) {
+  const rng = mulberry32(hashString(prompt) ^ ((seed + index * 7919) >>> 0));
+  const plate = PLATE_POOL[Math.floor(rng() * PLATE_POOL.length)];
+  const finish = FINISHES[Math.floor(rng() * FINISHES.length)];
+  return { plate, finish };
+}
 
-const STAGES = [
-  "Casting the muse",
-  "Scouting the location",
-  "Styling the look",
-  "Setting the lights",
-  "Rolling the shutter",
-  "Developing the plate",
-  "Retouching",
-];
+/* ------------------------------ Live engine ------------------------------ */
 
-const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const LIVE_BASE = "https://image.pollinations.ai/prompt/";
 
-export const mockProvider: ImageProvider = {
-  id: "mock",
-  label: "Mock darkroom",
+export function liveDimensions(ratio: string, maxSide: number) {
+  const [w, h] = ratio.split(":").map(Number);
+  const rw = w || 1;
+  const rh = h || 1;
+  let width: number;
+  let height: number;
+  if (rw >= rh) {
+    width = maxSide;
+    height = (maxSide * rh) / rw;
+  } else {
+    height = maxSide;
+    width = (maxSide * rw) / rh;
+  }
+  const round = (n: number) => Math.max(512, Math.round(n / 64) * 64);
+  return { width: round(width), height: round(height) };
+}
+
+export function liveUrl(prompt: string, seed: number, width: number, height: number) {
+  const p = encodeURIComponent(prompt.slice(0, 1600));
+  return `${LIVE_BASE}${p}?model=flux&seed=${seed}&width=${width}&height=${height}&nologo=true&private=true&safe=true&referrer=editorial-ai`;
+}
+
+/** Fetch waits for the remote engine to actually finish rendering. One retry on throttle/5xx. */
+async function fetchLive(url: string): Promise<boolean> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 75_000);
+    try {
+      const res = await fetch(url, { signal: ctrl.signal });
+      if (res.ok) return true;
+      if ((res.status === 429 || res.status >= 500) && attempt === 0) {
+        // Anonymous tier throttles to 1 request / 15s — back off, then retry.
+        await sleep(16_000);
+        continue;
+      }
+      return false;
+    } catch {
+      if (attempt === 0) {
+        await sleep(4_000);
+        continue;
+      }
+      return false;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  return false;
+}
+
+export const studioProvider: ImageProvider = {
+  id: "studio",
+  label: "EditorialAI studio engine",
   mock: true,
 
   async generate(req, onProgress) {
-    const total = 1900 + req.count * 380;
-    const started = Date.now();
-    const promptHash = hashString(req.prompt);
-
-    const timer = setInterval(() => {
-      const pct = Math.min(96, Math.round(((Date.now() - started) / total) * 100));
-      const stage = STAGES[Math.min(STAGES.length - 1, Math.floor((pct / 100) * STAGES.length))];
-      onProgress?.(stage, pct);
-    }, 140);
-
-    await sleep(total);
-    clearInterval(timer);
-    onProgress?.("Printing", 100);
-
+    const maxSide = req.quality === "hq" ? 1536 : 1024;
+    const { width, height } = liveDimensions(req.ratio, maxSide);
     const images: ProviderImage[] = [];
+
     for (let i = 0; i < req.count; i++) {
-      const seed = (req.seed + i * 7919) >>> 0;
-      const rnd = mulberry32(promptHash + seed);
-      const plate = POOL[(promptHash + seed) % POOL.length];
-      images.push({
-        url: plate.src,
-        seed,
-        filter: FINISHES[Math.floor(rnd() * FINISHES.length)],
-        focus: FOCUSES[Math.floor(rnd() * FOCUSES.length)],
-      });
+      const seed = (req.seed + i * 977) >>> 0;
+      onProgress?.(
+        req.count > 1 ? `Developing plate ${i + 1} of ${req.count}` : "Exposing the frame",
+        16 + (i / req.count) * 48
+      );
+
+      const url = liveUrl(req.prompt, seed, width, height);
+      const ok = await fetchLive(url);
+
+      if (ok) {
+        images.push({ url, seed });
+      } else {
+        const { plate, finish } = fallbackPick(req.prompt, seed, i);
+        images.push({ url: plate.url, seed, filter: finish.filter, focus: plate.focus, fallback: true });
+      }
+
+      // Space out plates so batches stay inside the anonymous rate limit.
+      if (i < req.count - 1) await sleep(1_400);
     }
+
+    onProgress?.("Printing", 100);
     return images;
   },
 };
+
+/** Alias for older imports. */
+export const mockProvider = studioProvider;

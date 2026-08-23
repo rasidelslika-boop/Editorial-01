@@ -7,8 +7,9 @@ export type { ImageProvider, ProviderImage, GenerateRequest, ProgressFn } from "
 const env = import.meta.env as Record<string, string | undefined>;
 
 /**
- * Route an engine to its live provider when credentials exist,
- * otherwise fall back to the mock darkroom so the studio always works.
+ * Route an engine to its direct provider when credentials exist,
+ * otherwise use the studio engine — live prompt-driven renders via the
+ * free Pollinations API, with bundled plates as an offline fallback.
  */
 export function resolveProvider(engine: EngineId): ImageProvider {
   switch (engine) {
@@ -29,18 +30,18 @@ export function resolveProvider(engine: EngineId): ImageProvider {
 
 export function providerNotice(engine: EngineId): string | null {
   const p = resolveProvider(engine);
-  if (!p.mock) return null;
+  if (!p.mock) return null; // routed to a direct API via env keys
   switch (engine) {
     case "dalle3":
-      return "Mock darkroom — set VITE_OPENAI_API_KEY in .env.local to shoot live with DALL·E 3.";
+      return "Rendering live via the free studio engine — add VITE_OPENAI_API_KEY to call DALL·E 3 directly.";
     case "flux-pro":
     case "flux-dev":
     case "sd3":
-      return "Mock darkroom — set VITE_BFL_API_KEY in .env.local to shoot live with Flux.";
+      return "Rendering live via the free studio engine — add VITE_BFL_API_KEY to call the Flux API directly.";
     case "custom":
-      return "Mock darkroom — set VITE_CUSTOM_ENDPOINT in .env.local to use your own API.";
+      return "Rendering live via the free studio engine — set VITE_CUSTOM_ENDPOINT to route to your own API.";
     case "mj6":
-      return "Mock darkroom — Midjourney style is simulated locally (no official API).";
+      return "Midjourney-style plates are rendered by the free studio engine (Midjourney has no official API).";
     default:
       return null;
   }
