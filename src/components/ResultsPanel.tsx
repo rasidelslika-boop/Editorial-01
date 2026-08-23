@@ -26,7 +26,7 @@ import { useStudioStore } from "../stores/editorial";
 import { useUIStore } from "../stores/ui";
 import { promptSummary } from "../lib/promptBuilder";
 import { SCENE_STARTERS } from "../lib/presets";
-import { buildZipArchive, cn, copyText, downloadImage, highResUrl, triggerBlobDownload } from "../lib/utils";
+import { buildZipArchive, cn, copyText, downloadImage, highResUrl, type ArchiveResult } from "../lib/utils";
 import type { Generation } from "../types";
 import { Button } from "./ui";
 
@@ -120,7 +120,7 @@ export function ResultsPanel() {
   const [showPrompt, setShowPrompt] = useState(false);
   const [packing, setPacking] = useState(false);
   const [packStep, setPackStep] = useState<{ done: number; total: number } | null>(null);
-  const [archive, setArchive] = useState<{ href: string; name: string; saved: number; failed: number } | null>(null);
+  const [archive, setArchive] = useState<ArchiveResult | null>(null);
   const [clearArm, setClearArm] = useState(false);
 
   /** Two-step clear — first click arms, second click wipes the contact sheet. */
@@ -181,25 +181,14 @@ export function ResultsPanel() {
         return;
       }
 
-      // Retire any previous archive blob before mounting the new one.
-      if (archive) URL.revokeObjectURL(archive.href);
-
-      // Attempt the automatic save — but always keep a manual anchor ready,
-      // since browsers refuse unattended saves once the click gesture expires.
-      const autoSaved = triggerBlobDownload(result.blob, result.filename);
-      setArchive({
-        href: URL.createObjectURL(result.blob),
-        name: result.filename,
-        saved: result.saved,
-        failed: result.failed,
-      });
-
+      // Long async work means the original click gesture is gone, so a direct
+      // auto-save would be blocked — surface the ready-bar and let the user's
+      // fresh "Save ZIP" click do the (gesture-safe) download.
+      setArchive(result);
       const skipped = result.failed ? ` · ${result.failed} skipped (expired)` : "";
-      toast(autoSaved ? "Session archive saved" : "Archive ready", {
-        description: autoSaved
-          ? `${result.saved} plate${result.saved === 1 ? "" : "s"} zipped${skipped} — if it didn't land, tap Save ZIP below.`
-          : `Auto-save was blocked by the browser — tap Save ZIP below to grab ${result.saved} plate${result.saved === 1 ? "" : "s"}${skipped}.`,
-        tone: autoSaved ? "success" : "info",
+      toast("Archive ready", {
+        description: `${result.saved} plate${result.saved === 1 ? "" : "s"} zipped${skipped} — tap Save ZIP below.`,
+        tone: "info",
       });
     } catch (err) {
       console.warn("[EditorialAI] Archive failed", err);
@@ -213,10 +202,30 @@ export function ResultsPanel() {
     }
   };
 
-  const dismissArchive = () => {
-    if (archive) URL.revokeObjectURL(archive.href);
-    setArchive(null);
+  /** Save from the ready-bar — a fresh click gesture makes the anchor download stick. */
+  const saveZipNow = () => {
+    if (!archive) return;
+    try {
+      const href = URL.createObjectURL(archive.blob);
+      const a = document.createElement("a");
+      a.href = href;
+      a.download = archive.filename;
+      a.rel = "noopener";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      toast("Archive download started", {
+        description: `${archive.saved} plate${archive.saved === 1 ? "" : "s"} — check your downloads folder.`,
+        tone: "success",
+      });
+      setArchive(null);
+      setTimeout(() => URL.revokeObjectURL(href), 60_000);
+    } catch {
+      toast("Save failed", { description: "The browser refused the download entirely.", tone: "error" });
+    }
   };
+
+  const dismissArchive = () => setArchive(null);
 
   const gen = generations.find((g) => g.id === activeId) ?? generations[0] ?? null;
 
@@ -597,7 +606,7 @@ export function ResultsPanel() {
             </div>
           </div>
 
-          {/* Archive ready — the manual anchor is the one save trigger no browser blocks. */}
+          {/* Archive ready — Save ZIP runs inside a fresh click gesture. */}
           <AnimatePresence>
             {archive && (
               <motion.div
@@ -609,19 +618,18 @@ export function ResultsPanel() {
               >
                 <Archive className="h-4 w-4 shrink-0 text-gilt-600 dark:text-gilt-300" aria-hidden />
                 <div className="min-w-0 flex-1">
-                  <p className="truncate font-mono text-[11px] font-bold">{archive.name}</p>
+                  <p className="truncate font-mono text-[11px] font-bold">{archive.filename}</p>
                   <p className="font-mono text-[10px] text-ink/50 dark:text-paper/45">
                     {archive.saved} plate{archive.saved === 1 ? "" : "s"} packed
                     {archive.failed ? ` · ${archive.failed} skipped` : ""} · ready to save
                   </p>
                 </div>
-                <a
-                  href={archive.href}
-                  download={archive.name}
+                <button
+                  onClick={() => void saveZipNow()}
                   className="flex h-8 shrink-0 items-center gap-1.5 rounded-sm bg-ink px-3 font-mono text-[10px] font-bold uppercase tracking-[0.14em] text-paper transition-transform duration-150 hover:-translate-y-px dark:bg-paper dark:text-ink"
                 >
                   <Download className="h-3 w-3" /> Save ZIP
-                </a>
+                </button>
                 <button
                   onClick={dismissArchive}
                   aria-label="Dismiss archive"

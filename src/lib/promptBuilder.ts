@@ -30,24 +30,33 @@ export function museText(form: FormState): string {
   if (!d) return "";
 
   const fmtH = (inches: number) => `${Math.floor(inches / 12)}'${inches % 12}"`;
+  /** True when a field holds a full composed phrase (from the Random boxes) rather than a chip value. */
+  const phrase = (v: string) => v.includes(" with ") || v.includes(" and ") || v.length > 28;
 
   const silhouette: string[] = [];
   if (d.heightIn) silhouette.push(`${fmtH(d.heightIn)} tall`);
   if (d.weightLb) silhouette.push(`${d.weightLb} lbs`);
-  if (d.bodyType) silhouette.push(`${d.bodyType} figure`);
+  if (d.bodyType) silhouette.push(phrase(d.bodyType) ? d.bodyType : `${d.bodyType} figure`);
   if (d.bust) silhouette.push(`${d.bust} bust`);
   if (d.waistIn) silhouette.push(`${d.waistIn}" waist`);
   if (d.hipsIn) silhouette.push(`${d.hipsIn}" hips`);
 
   const face: string[] = [];
-  if (d.faceShape) face.push(`${d.faceShape} face`);
-  if (d.faceFeatures) face.push(d.faceFeatures);
-  if (d.eyeShape && d.eyeColor) face.push(`${d.eyeShape} ${d.eyeColor} eyes`);
+  if (d.faceShape) face.push(phrase(d.faceShape) ? d.faceShape : `${d.faceShape} face`);
+  if (d.faceFeatures && !(d.faceShape && phrase(d.faceShape))) face.push(d.faceFeatures);
+  if (d.eyeColor && phrase(d.eyeColor)) face.push(d.eyeColor);
+  else if (d.eyeShape && d.eyeColor) face.push(`${d.eyeShape} ${d.eyeColor} eyes`);
   else if (d.eyeColor) face.push(`${d.eyeColor} eyes`);
   if (d.skinTone) {
-    face.push(d.undertone ? `${d.skinTone} skin with a ${d.undertone} undertone` : `${d.skinTone} skin`);
+    if (phrase(d.skinTone)) face.push(d.skinTone);
+    else face.push(d.undertone ? `${d.skinTone} skin with a ${d.undertone} undertone` : `${d.skinTone} skin`);
   }
-  if (d.skinDetail && d.skinDetail !== "none — flawless matte" && d.skinDetail !== "natural bare skin") {
+  if (
+    d.skinDetail &&
+    !(d.skinTone && phrase(d.skinTone)) &&
+    d.skinDetail !== "none — flawless matte" &&
+    d.skinDetail !== "natural bare skin"
+  ) {
     face.push(d.skinDetail);
   }
 
@@ -56,13 +65,13 @@ export function museText(form: FormState): string {
   if (d.hairColor) hair.push(d.hairColor);
 
   const glam: string[] = [];
-  if (d.makeup) glam.push(`${d.makeup} makeup`);
+  if (d.makeup && !(d.faceShape && phrase(d.faceShape))) glam.push(`${d.makeup} makeup`);
   if (d.distinctive && d.distinctive !== "none") glam.push(d.distinctive);
 
   const bits = [silhouette.join(", "), face.join(", "), hair.join(", "), glam.join(", ")]
     .filter(Boolean)
     .join("; ");
-  const vibe = d.museVibe ? `an overall ${d.museVibe} presence` : "";
+  const vibe = d.museVibe ? (phrase(d.museVibe) || d.museVibe.startsWith("a ") ? d.museVibe : `an overall ${d.museVibe} presence`) : "";
   return [bits, vibe].filter(Boolean).join(" — ");
 }
 

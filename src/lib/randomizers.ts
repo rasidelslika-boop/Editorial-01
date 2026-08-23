@@ -258,6 +258,173 @@ export const DISTINCTIVE_DETAILS = [
   "a small crescent-moon tattoo behind the ear",
 ] as const;
 
+/* ------------------- Composed custom rollers (01a–01i boxes) ------------------- */
+/*  These build a fresh phrase from part-pools every press, so the result is   */
+/*  a unique description that never just selects one of the preset chips.      */
+
+function twoDistinct<T>(arr: readonly T[]): [T, T] {
+  const i = Math.floor(Math.random() * arr.length);
+  let j = Math.floor(Math.random() * (arr.length - 1));
+  if (j >= i) j++;
+  return [arr[i], arr[j]];
+}
+
+const HAIR_CUTS = [
+  "a sleek high ponytail",
+  "a sculpted wet-look bob",
+  "long layered waves",
+  "a blunt chin-length bob",
+  "a voluminous blowout",
+  "tousled shag layers",
+  "a braided crown updo",
+  "soft romantic curls",
+  "a glass-smooth middle part",
+  "an undone chignon",
+  "beach-textured waves",
+  "a retro Hollywood wave set",
+] as const;
+const HAIR_FINISHES = [
+  "with wispy face-framing tendrils",
+  "with a deep side part",
+  "with pinned-back volume at the crown",
+  "with a velvet ribbon detail",
+  "with tucked-behind-the-ear strands",
+  "with mirror shine and feathered ends",
+  "with a windswept lift",
+  "with jeweled hairpin accents",
+  "with a light texturizing mist",
+  "with braided under-layers",
+] as const;
+export const rollHairstyleCustom = () => `${pick(HAIR_CUTS)} ${pick(HAIR_FINISHES)}`;
+
+const HAIR_F_CUTS = [
+  "floor-length silver waves",
+  "an iridescent holographic bob",
+  "braids woven with starlight thread",
+  "a cloud-soft white updo",
+  "rose-gold liquid waves",
+  "a crown of sculpted petals",
+  "midnight-indigo waves",
+  "a gravity-defying floating mane",
+] as const;
+const HAIR_F_FINISHES = [
+  "strung with tiny pearls",
+  "dusted with gold leaf",
+  "with weightless floating strands",
+  "pinned with moonstone clips",
+  "glowing faintly at the tips",
+  "with living butterfly ornaments",
+  "cascading like a slow waterfall",
+  "threaded with fine silver chain",
+] as const;
+export const rollHairstyleFantasy = () => `${pick(HAIR_F_CUTS)} ${pick(HAIR_F_FINISHES)}`;
+
+const HAIR_COLOR_POOL = [
+  "espresso", "platinum", "chestnut", "honey balayage", "auburn", "jet black",
+  "strawberry blonde", "mocha", "ash brown", "champagne", "cherry cola",
+  "caramel", "rose gold", "silver smoke",
+] as const;
+const HAIR_TEXTURE_POOL = [
+  "glossy straight", "soft waves", "loose curls", "sleek and slick",
+  "voluminous blowout", "beach waves", "tousled shag", "pin-straight",
+  "bouncy curls", "glass shine", "liquid waves",
+] as const;
+export const rollHairCombo = () => `${pick(HAIR_COLOR_POOL)} · ${pick(HAIR_TEXTURE_POOL)}`;
+
+const HAIR_F_COLOR_POOL = [
+  "opalescent white", "rose-gold metallic", "midnight indigo", "molten copper",
+  "lavender mist", "gold-leaf", "sea-glass green", "aurora-shifting",
+] as const;
+const HAIR_F_TEXTURE_POOL = [
+  "weightless floating", "liquid waves", "cloud curls", "starlit sheen",
+  "flame-like volume", "sculpted waves",
+] as const;
+export const rollHairComboFantasy = () => `${pick(HAIR_F_COLOR_POOL)} · ${pick(HAIR_F_TEXTURE_POOL)}`;
+
+const EYE_LIGHT = [
+  "heavy dark lashes",
+  "a soft golden catchlight",
+  "a subtle smoky outer corner",
+  "lifted outer corners",
+  "a fine graphic liner",
+  "a dewy lower-lid shimmer",
+  "long fluttering lashes",
+  "a clean bare lash line",
+] as const;
+export const rollEyesCustom = () => `${pick(EYE_SHAPES)} ${pick(EYE_COLORS)} eyes with ${pick(EYE_LIGHT)}`;
+
+const SKIN_FINISH_POOL = [
+  "a luminous dewy glow",
+  "a soft velvet finish",
+  "a constellation of subtle freckles",
+  "a faint beauty shimmer",
+  "a natural bare radiance",
+  "a hydrated glass-skin sheen",
+] as const;
+export const rollSkinCustom = () =>
+  `${pick(SKIN_TONES)} skin with a ${pick(UNDERTONES)} undertone and ${pick(SKIN_FINISH_POOL)}`;
+
+export const rollFaceCustom = () => {
+  const [f1, f2] = twoDistinct(FACE_FEATURES);
+  return `${pick(FACE_SHAPES)} face with ${f1} and ${f2}, ${pick(MAKEUP_LEVELS)} makeup`;
+};
+
+const BODY_BUILD = [
+  "an hourglass", "an athletic", "a soft curvy", "a slim willowy", "a statuesque",
+  "a toned ballerina", "a petite", "a lean runway", "a classic balanced", "a gracefully full",
+] as const;
+const BODY_LINES = [
+  "a long elegant leg line",
+  "toned shoulders",
+  "a graceful neck and collarbones",
+  "soft natural curves",
+  "a statuesque posture",
+  "a delicate frame",
+  "strong athletic definition",
+  "a fluid dancer's carriage",
+] as const;
+export const rollBodyCustom = () => `${pick(BODY_BUILD)} figure with ${pick(BODY_LINES)}`;
+
+const DETAIL_POOL = [
+  "a dimple on the left cheek",
+  "a beauty mark above the lip",
+  "a tiny star tattoo on the collarbone",
+  "a delicate nose stud",
+  "freckles dusted across the nose",
+  "a single pearl ear cuff",
+  "a fine-line wrist tattoo",
+  "a small crescent-moon tattoo behind the ear",
+  "a faint editorial scar through the brow",
+  "a dermal sparkle at the cheekbone",
+  "a thin gold anklet",
+  "lace-fine henna on one hand",
+] as const;
+export const rollDistinctiveCustom = () => {
+  const [d1, d2] = twoDistinct(DETAIL_POOL);
+  return `${d1} and ${d2}`;
+};
+
+const VIBE_PRIMARY = [
+  "elegant supermodel", "girl-next-door goddess", "exotic beauty", "ethereal nymph",
+  "fierce runway icon", "vintage Hollywood glamour", "minimalist cool-girl",
+  "bohemian muse", "regal editorial queen", "sun-kissed free spirit",
+] as const;
+const VIBE_SECOND = [
+  "a hint of mischief",
+  "old-money poise",
+  "an effortless off-duty ease",
+  "a quiet mysterious edge",
+  "radiant warmth",
+  "untamed confidence",
+  "a dreamy softness",
+  "a fearless rock-and-roll attitude",
+] as const;
+export const rollVibeCustom = () => {
+  const p = pick(VIBE_PRIMARY);
+  const art = /^[aeiou]/i.test(p) ? "an" : "a";
+  return `${art} ${p} presence with ${pick(VIBE_SECOND)}`;
+};
+
 /* --------------------------------- Rollers ---------------------------------- */
 
 /** Re-cast the muse entirely — a new breathtaking 21-year-old, head to toe. */

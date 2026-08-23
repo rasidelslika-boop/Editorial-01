@@ -51,6 +51,16 @@ import {
   RANDOM_POSES,
   RANDOM_SETTINGS,
   REMOVE_STEPS,
+  rollBodyCustom,
+  rollDistinctiveCustom,
+  rollEyesCustom,
+  rollFaceCustom,
+  rollHairCombo,
+  rollHairComboFantasy,
+  rollHairstyleCustom,
+  rollHairstyleFantasy,
+  rollSkinCustom,
+  rollVibeCustom,
   SKIN_DETAILS,
   SKIN_TONES,
   TRENDY_LOOKS,
@@ -146,6 +156,42 @@ function MuseSub({ code, title, aside, children }: { code: string; title: string
   );
 }
 
+/**
+ * The random-entry box. Shows the current custom description (from a Random /
+ * Fantasy press, or typed by hand). Unlike the chips, this holds a composed
+ * phrase that doesn't match any preset — so a dice press fills it with fresh
+ * text instead of selecting a chip.
+ */
+function MuseNote({
+  value,
+  onChange,
+  placeholder,
+  ariaLabel,
+  fantasy,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder: string;
+  ariaLabel: string;
+  fantasy?: boolean;
+}) {
+  return (
+    <input
+      aria-label={ariaLabel}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      className={cn(
+        "mt-2 w-full rounded-sm border bg-transparent px-2.5 py-1.5 font-mono text-[11px] leading-relaxed transition-colors",
+        "focus:outline-none focus:ring-1",
+        fantasy
+          ? "border-gilt-500/40 text-gilt-700 placeholder:text-gilt-600/35 focus:border-gilt-500 focus:ring-gilt-500/30 dark:text-gilt-300 dark:placeholder:text-gilt-300/30"
+          : "border-ink/20 text-ink/80 placeholder:text-ink/30 focus:border-wine-600 focus:ring-wine-600/30 dark:border-paper/20 dark:text-paper/80 dark:placeholder:text-paper/25 dark:focus:border-gilt-400 dark:focus:ring-gilt-400/30"
+      )}
+    />
+  );
+}
+
 /* ------------------------------ The muse dossier ------------------------------ */
 
 function MusePanel() {
@@ -166,8 +212,8 @@ function MusePanel() {
         title="Hairstyle"
         aside={
           <>
-            <RollButton icon={Dices} label="Roll a trendy hairstyle" onRoll={() => patchMuse({ hairstyle: pick(HAIRSTYLES_TRENDY) })} />
-            <RollButton icon={Sparkles} label="Roll a fantasy hairstyle" fantasy onRoll={() => patchMuse({ hairstyle: pick(HAIRSTYLES_FANTASY) })} />
+            <RollButton icon={Dices} label="Roll a fresh hairstyle" onRoll={() => patchMuse({ hairstyle: rollHairstyleCustom() })} />
+            <RollButton icon={Sparkles} label="Roll a fantasy hairstyle" fantasy onRoll={() => patchMuse({ hairstyle: rollHairstyleFantasy() })} />
           </>
         }
       >
@@ -178,11 +224,13 @@ function MusePanel() {
             </Chip>
           ))}
         </div>
-        {muse.hairstyle && !HAIRSTYLES_TRENDY.includes(muse.hairstyle as never) ? (
-          <p className="mt-1.5 flex items-center gap-1.5 font-mono text-[10px] text-gilt-600 dark:text-gilt-300">
-            <Sparkles className="h-3 w-3" /> {muse.hairstyle}
-          </p>
-        ) : null}
+        <MuseNote
+          value={muse.hairstyle}
+          onChange={(v) => patchMuse({ hairstyle: v })}
+          placeholder="Press Random for a fresh style, or write your own…"
+          ariaLabel="Custom hairstyle"
+          fantasy={!!muse.hairstyle && !HAIRSTYLES_TRENDY.includes(muse.hairstyle as never) && !HAIRSTYLES_FANTASY.includes(muse.hairstyle as never)}
+        />
       </MuseSub>
 
       {/* 01b — Body measurements (imperial) */}
@@ -235,8 +283,8 @@ function MusePanel() {
         title="Hair colour + texture"
         aside={
           <>
-            <RollButton icon={Dices} label="Roll hair colour and texture" onRoll={() => patchMuse({ hairColor: pick(HAIR_COMBOS) })} />
-            <RollButton icon={Sparkles} label="Roll a fantasy hair colour" fantasy onRoll={() => patchMuse({ hairColor: pick(HAIR_COMBOS_FANTASY) })} />
+            <RollButton icon={Dices} label="Roll hair colour and texture" onRoll={() => patchMuse({ hairColor: rollHairCombo() })} />
+            <RollButton icon={Sparkles} label="Roll a fantasy hair colour" fantasy onRoll={() => patchMuse({ hairColor: rollHairComboFantasy() })} />
           </>
         }
       >
@@ -259,7 +307,7 @@ function MusePanel() {
         code="01d"
         title="Eyes"
         aside={
-          <RollButton icon={Dices} label="Roll eye colour and shape" onRoll={() => patchMuse({ eyeColor: pick(EYE_COLORS), eyeShape: pick(EYE_SHAPES) })} />
+          <RollButton icon={Dices} label="Roll a fresh eye description" onRoll={() => patchMuse({ eyeColor: rollEyesCustom(), eyeShape: "" })} />
         }
       >
         <Label className="!mb-1">Colour</Label>
@@ -278,6 +326,12 @@ function MusePanel() {
             </Chip>
           ))}
         </div>
+        <MuseNote
+          value={muse.eyeColor}
+          onChange={(v) => patchMuse({ eyeColor: v })}
+          placeholder="Press Random for a composed eye description, or write your own…"
+          ariaLabel="Custom eye description"
+        />
       </MuseSub>
 
       {/* 01e — Complexion */}
@@ -287,8 +341,8 @@ function MusePanel() {
         aside={
           <RollButton
             icon={Dices}
-            label="Roll complexion"
-            onRoll={() => patchMuse({ skinTone: pick(SKIN_TONES), undertone: pick(UNDERTONES), skinDetail: pick(SKIN_DETAILS) })}
+            label="Roll a fresh complexion description"
+            onRoll={() => patchMuse({ skinTone: rollSkinCustom(), undertone: "", skinDetail: "" })}
           />
         }
       >
@@ -299,6 +353,12 @@ function MusePanel() {
             </Chip>
           ))}
         </div>
+        <MuseNote
+          value={muse.skinTone}
+          onChange={(v) => patchMuse({ skinTone: v })}
+          placeholder="Press Random for a composed complexion, or write your own…"
+          ariaLabel="Custom complexion description"
+        />
         <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
           <SelectBox ariaLabel="Undertone" placeholder="Undertone —" value={muse.undertone} onChange={(v) => patchMuse({ undertone: v })} options={UNDERTONES.map((u) => ({ id: u, label: `${u} undertone` }))} />
           <div className="flex items-center gap-1.5">
@@ -322,8 +382,8 @@ function MusePanel() {
         aside={
           <RollButton
             icon={Dices}
-            label="Roll face shape, features and makeup"
-            onRoll={() => patchMuse({ faceShape: pick(FACE_SHAPES), faceFeatures: pick(FACE_FEATURES), makeup: pick(MAKEUP_LEVELS) })}
+            label="Roll a fresh face description"
+            onRoll={() => patchMuse({ faceShape: rollFaceCustom(), faceFeatures: "", makeup: "" })}
           />
         }
       >
@@ -334,6 +394,12 @@ function MusePanel() {
             </Chip>
           ))}
         </div>
+        <MuseNote
+          value={muse.faceShape}
+          onChange={(v) => patchMuse({ faceShape: v })}
+          placeholder="Press Random for a composed face description, or write your own…"
+          ariaLabel="Custom face description"
+        />
         <div className="mt-2 flex flex-wrap gap-1.5">
           {FACE_FEATURES.map((f) => (
             <Chip key={f} active={muse.faceFeatures === f} onClick={() => patchMuse({ faceFeatures: f })}>
@@ -354,7 +420,7 @@ function MusePanel() {
       </MuseSub>
 
       {/* 01g — Body type */}
-      <MuseSub code="01g" title="Body type" aside={<RollButton icon={Dices} label="Roll body type" onRoll={() => patchMuse({ bodyType: pick(BODY_TYPES) })} />}>
+      <MuseSub code="01g" title="Body type" aside={<RollButton icon={Dices} label="Roll a fresh body type" onRoll={() => patchMuse({ bodyType: rollBodyCustom() })} />}>
         <div className="flex flex-wrap gap-1.5">
           {BODY_TYPES.map((b) => (
             <Chip key={b} active={muse.bodyType === b} onClick={() => patchMuse({ bodyType: b })}>
@@ -362,13 +428,19 @@ function MusePanel() {
             </Chip>
           ))}
         </div>
+        <MuseNote
+          value={muse.bodyType}
+          onChange={(v) => patchMuse({ bodyType: v })}
+          placeholder="Press Random for a composed body type, or write your own…"
+          ariaLabel="Custom body type"
+        />
       </MuseSub>
 
       {/* 01h — Distinctive details */}
       <MuseSub
         code="01h"
         title="Distinctive details"
-        aside={<RollButton icon={Dices} label="Roll a distinctive detail" onRoll={() => patchMuse({ distinctive: pick(DISTINCTIVE_DETAILS) })} />}
+        aside={<RollButton icon={Dices} label="Roll a fresh distinctive detail" onRoll={() => patchMuse({ distinctive: rollDistinctiveCustom() })} />}
       >
         <div className="flex flex-wrap gap-1.5">
           {DISTINCTIVE_DETAILS.map((d) => (
@@ -377,10 +449,16 @@ function MusePanel() {
             </Chip>
           ))}
         </div>
+        <MuseNote
+          value={muse.distinctive === "none" ? "" : muse.distinctive}
+          onChange={(v) => patchMuse({ distinctive: v })}
+          placeholder="Press Random for a fresh detail, or write your own…"
+          ariaLabel="Custom distinctive detail"
+        />
       </MuseSub>
 
       {/* 01i — Overall muse vibe */}
-      <MuseSub code="01i" title="Overall muse vibe" aside={<RollButton icon={Dices} label="Roll the muse vibe" onRoll={() => patchMuse({ museVibe: pick(MUSE_VIBES) })} />}>
+      <MuseSub code="01i" title="Overall muse vibe" aside={<RollButton icon={Dices} label="Roll a fresh muse vibe" onRoll={() => patchMuse({ museVibe: rollVibeCustom() })} />}>
         <div className="flex flex-wrap gap-1.5">
           {MUSE_VIBES.map((v) => (
             <Chip key={v} active={muse.museVibe === v} onClick={() => patchMuse({ museVibe: v })}>
@@ -388,6 +466,12 @@ function MusePanel() {
             </Chip>
           ))}
         </div>
+        <MuseNote
+          value={muse.museVibe}
+          onChange={(v) => patchMuse({ museVibe: v })}
+          placeholder="Press Random for a composed vibe, or write your own…"
+          ariaLabel="Custom muse vibe"
+        />
       </MuseSub>
     </div>
   );
