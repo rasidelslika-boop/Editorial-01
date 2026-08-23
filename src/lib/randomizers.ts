@@ -194,7 +194,16 @@ export const SKIN_DETAILS = [
   "a soft velvet finish",
   "a faint beauty shimmer",
   "natural bare skin",
+  // Editorial beauty-finale finishes — genuine fashion-photography genres.
+  "a glossy wet-look, skin glistening as if just emerged from water",
+  "fine water droplets beading across the skin and collarbones",
+  "skin glazed with slow-dripping amber honey, high-fashion beauty styling",
 ] as const;
+
+/** Roll a skin finish — including the editorial wet/honey finishes. */
+export function rollSkinDetail(): string {
+  return pick(SKIN_DETAILS.filter((d) => d !== "none — flawless matte"));
+}
 
 /* ----------------------------- 01f · face & makeup -------------------------- */
 
@@ -342,4 +351,62 @@ export const RANDOM_POSES = [
   "caught laughing, head tilted back",
   "standing in a doorway, backlit silhouette",
   "walking through shallow surf, skirt lifted",
+] as const;
+
+/* -------------------------------- 03 · the look ------------------------------ */
+
+/** The top ten trending looks in contemporary fashion photography. */
+export const TRENDY_LOOKS = [
+  "quiet luxury — tailored camel cashmere, fine ribbed knit, minimal gold jewellery",
+  "balletcore — wrapped satin bodysuit, leg warmers, soft tulle layers",
+  "mob-wife glamour — vintage fur, bold gold, animal print, a deep red lip",
+  "office siren — fitted pencil skirt, sheer blouse, pointed heels, tortoiseshell glasses",
+  "coquette — lace, ribbons and bows in a palette of blush and cream",
+  "nineties minimalism — a bias-cut slip dress, clean lines, barely-there makeup",
+  "gorpcore — technical shell and cargo silhouettes, hiking boots styled up",
+  "cowboy-core — fringe, raw denim, turquoise, a wide-brim hat",
+  "metallic futurism — liquid chrome and reflective fabrics, sculptural silhouettes",
+  "coastal grandmother — crisp linen, pearls, relaxed tailoring",
+] as const;
+
+/** Timeless editorial classics for the Classic roller. */
+export const CLASSIC_LOOKS = [
+  "a little black dress, timeless elegance",
+  "a crisp white shirt with high-waisted tailored trousers",
+  "a belted trench coat, collar up",
+  "a bouclé jacket with a knee-length skirt, pearls",
+  "a silk blouse and pleated midi skirt",
+  "a column gown in ivory crepe",
+  "a double-breasted blazer, nothing beneath",
+  "a knit turtleneck with wide-leg trousers",
+  "a strapless cocktail dress in classic red",
+  "a tweed suit, boxy and elegant",
+] as const;
+
+/** Avant-garde and unexpected for the Wild roller. */
+export const WILD_LOOKS = [
+  "an avant-garde sculptural gown with exaggerated architectural shoulders",
+  "a deconstructed couture piece in unexpected mixed materials",
+  "an oversized paper-bag silhouette in electric tangerine",
+  "a couture cape of layered iridescent organza",
+  "a sculptural pleated ensemble frozen mid-motion",
+  "a mirror-tile mosaic bodysuit, fractured reflections",
+  "an enormous ruffled taffeta ballgown, off-kilter proportions",
+  "a wearable sculpture of chrome and tulle",
+  "a patchwork couture coat of vintage textiles",
+  "an asymmetric draped jersey look, one shoulder bare",
+] as const;
+
+/** Confident, alluring editorial styling — glamorous and tasteful. */
+export const HOT_LOOKS = [
+  "a fitted liquid-satin slip dress with a daring thigh-high slit, confidence in every line",
+  "a form-fitting bandeau top with high-waisted satin trousers, magnetic presence",
+  "a sheer-panel evening gown, alluring yet elegant",
+  "a corseted bodice with a flowing skirt, hourglass silhouette",
+  "a plunging velvet jumpsuit, statuesque and poised",
+  "a body-skimming ribbed knit column dress, effortless allure",
+  "an open-back halter gown with a dramatic train",
+  "a lace-trimmed silk slip and sheer robe, boudoir elegance",
+  "a sculpted leather bustier with tailored trousers, fierce glamour",
+  "a draped jersey goddess gown clinging to every curve",
 ] as const;

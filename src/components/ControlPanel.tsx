@@ -1,5 +1,5 @@
 import { motion } from "framer-motion";
-import { Camera, Dices, Layers, Lock, Sparkles, Unlock, type LucideIcon } from "lucide-react";
+import { Camera, Dices, Flame, Layers, Lock, Sparkles, Unlock, type LucideIcon } from "lucide-react";
 import { useStudioStore } from "../stores/editorial";
 import { useGenerate } from "../hooks/useGenerate";
 import {
@@ -17,6 +17,7 @@ import {
 import {
   BODY_TYPES,
   BUST_OPTIONS,
+  CLASSIC_LOOKS,
   DISTINCTIVE_DETAILS,
   EYE_COLORS,
   EYE_SHAPES,
@@ -29,19 +30,23 @@ import {
   HAIR_COMBOS_FANTASY,
   HEIGHT_OPTIONS,
   HIPS_OPTIONS,
+  HOT_LOOKS,
   MAKEUP_LEVELS,
   MUSE_VIBES,
   RANDOM_POSES,
   RANDOM_SETTINGS,
   SKIN_DETAILS,
   SKIN_TONES,
+  TRENDY_LOOKS,
   UNDERTONES,
   WAIST_OPTIONS,
   WEIGHT_OPTIONS,
+  WILD_LOOKS,
   fmtHeight,
   pick,
   rollMeasurements,
   rollMuse,
+  rollSkinDetail,
 } from "../lib/randomizers";
 import { cn } from "../lib/utils";
 import { Button, Chip, Label, Section, SelectBox, Switch, inputCls, textareaCls } from "./ui";
@@ -76,17 +81,19 @@ function RollButton({
   label,
   onRoll,
   fantasy,
+  hot,
   text,
 }: {
   icon: LucideIcon;
   label: string;
   onRoll: () => void;
   fantasy?: boolean;
+  hot?: boolean;
   text?: string;
 }) {
   return (
     <motion.button
-      whileTap={{ scale: 0.9, rotate: fantasy ? 0 : 12 }}
+      whileTap={{ scale: 0.9, rotate: fantasy || hot ? 0 : 12 }}
       transition={{ type: "spring", stiffness: 500, damping: 22 }}
       onClick={onRoll}
       aria-label={label}
@@ -96,7 +103,9 @@ function RollButton({
         "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-wine-500",
         fantasy
           ? "border-gilt-500/50 text-gilt-600 hover:border-gilt-500 hover:bg-gilt-500/10 dark:text-gilt-300"
-          : "border-wine-700/40 text-wine-700 hover:border-wine-700 hover:bg-wine-700/10 dark:border-gilt-400/40 dark:text-gilt-400 dark:hover:border-gilt-400 dark:hover:bg-gilt-400/10"
+          : hot
+            ? "border-wine-600/60 text-wine-600 hover:border-wine-600 hover:bg-wine-600/15 dark:border-wine-400/60 dark:text-wine-300 dark:hover:border-wine-400 dark:hover:bg-wine-500/20"
+            : "border-wine-700/40 text-wine-700 hover:border-wine-700 hover:bg-wine-700/10 dark:border-gilt-400/40 dark:text-gilt-400 dark:hover:border-gilt-400 dark:hover:bg-gilt-400/10"
       )}
     >
       <Icon className="h-3 w-3" />
@@ -276,7 +285,17 @@ function MusePanel() {
         </div>
         <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
           <SelectBox ariaLabel="Undertone" placeholder="Undertone —" value={muse.undertone} onChange={(v) => patchMuse({ undertone: v })} options={UNDERTONES.map((u) => ({ id: u, label: `${u} undertone` }))} />
-          <SelectBox ariaLabel="Skin finish" placeholder="Finish —" value={muse.skinDetail} onChange={(v) => patchMuse({ skinDetail: v })} options={SKIN_DETAILS.map((s) => ({ id: s, label: s }))} />
+          <div className="flex items-center gap-1.5">
+            <SelectBox
+              ariaLabel="Skin finish"
+              placeholder="Finish —"
+              value={muse.skinDetail}
+              onChange={(v) => patchMuse({ skinDetail: v })}
+              options={SKIN_DETAILS.map((s) => ({ id: s, label: s }))}
+              className="min-w-0 flex-1"
+            />
+            <RollButton icon={Dices} label="Roll a skin finish" onRoll={() => patchMuse({ skinDetail: rollSkinDetail() })} text="Roll" />
+          </div>
         </div>
       </MuseSub>
 
@@ -589,7 +608,23 @@ export function ControlPanel() {
         </Section>
 
         {/* 03 — The Look */}
-        <Section no="03" title="The Look" hint="Style the outfit">
+        <Section
+          no="03"
+          title="The Look"
+          hint="Style the outfit · top trending looks"
+          aside={
+            <>
+              <RollButton icon={Dices} label="Roll a classic look" onRoll={() => patchForm({ outfit: pick(CLASSIC_LOOKS) })} text="Classic" />
+              <RollButton icon={Sparkles} label="Roll a wild avant-garde look" fantasy onRoll={() => patchForm({ outfit: pick(WILD_LOOKS) })} text="Wild" />
+              <RollButton icon={Flame} label="Roll an alluring, glamorous look" hot onRoll={() => patchForm({ outfit: pick(HOT_LOOKS) })} text="Hot" />
+            </>
+          }
+        >
+          <PresetChips
+            presets={TRENDY_LOOKS.map((l) => ({ label: l.split("—")[0].trim(), value: l }))}
+            onPick={pickField("outfit")}
+            activeValue={form.outfit}
+          />
           <textarea
             aria-label="Outfit description"
             value={form.outfit}

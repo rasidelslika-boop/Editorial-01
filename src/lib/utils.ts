@@ -54,19 +54,35 @@ export async function copyText(text: string) {
 
 /* ------------------------------ Download pipeline ------------------------------ */
 
-/** Fetch a remote plate as a blob (requires the host to allow CORS). */
+/**
+ * Public CORS relays used only as a last resort for saving plates. Most CDNs
+ * (DashScope included) send no CORS headers, so a direct browser fetch is
+ * blocked and the plate never reaches the Downloads folder — routing the bytes
+ * through a relay fixes the save while keeping the image identical.
+ */
+const CORS_RELAYS: ((u: string) => string)[] = [
+  (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+  (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+];
+
+/** Fetch a remote plate as a blob — direct first, then via CORS relays. */
 export async function fetchBlob(url: string): Promise<Blob | null> {
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 60_000);
-    const res = await fetch(url, { mode: "cors", signal: ctrl.signal });
-    clearTimeout(timer);
-    if (!res.ok) return null;
-    const blob = await res.blob();
-    return blob.size > 0 ? blob : null;
-  } catch {
-    return null;
+  const attempts = [url, ...CORS_RELAYS.map((relay) => relay(url))];
+  for (const target of attempts) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 45_000);
+      const res = await fetch(target, { mode: "cors", signal: ctrl.signal });
+      clearTimeout(timer);
+      if (!res.ok) continue;
+      const blob = await res.blob();
+      // Relays can answer 200 with an error payload — insist on real image bytes.
+      if (blob.size > 10_000) return blob;
+    } catch {
+      /* try the next route */
+    }
   }
+  return null;
 }
 
 /**
