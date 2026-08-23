@@ -152,102 +152,148 @@ export async function fetchBlob(url: string): Promise<Blob | null> {
   return null;
 }
 
-/* ------------------------------ Delivery tab --------------------------------- */
-/*  Embedded preview iframes strip programmatic downloads — and even `about:    */
-/*  blank` / `data:` popup tabs inherit that restriction (opaque origins).      */
-/*  The one context that is never restricted is a genuine top-level page on     */
-/*  the app's own origin. So: the click opens the app itself at `#delivery`     */
-/*  (synchronously, gesture-safe), and the bytes are piped over a               */
-/*  BroadcastChannel. The delivery page — a real secure-context tab — saves     */
-/*  to Downloads, with copy-to-clipboard and right-click fallbacks that work    */
-/*  absolutely anywhere.                                                        */
+/* ------------------------------ Delivery popup -------------------------------- */
+/*  The embedded preview strips programmatic downloads from the studio iframe,   */
+/*  and a separately-opened top-level tab can't receive bytes over a             */
+/*  BroadcastChannel (same-origin only). The robust route is a popup that needs  */
+/*  no messaging at all: open it synchronously inside the click gesture, then    */
+/*  write the finished file into it as a base64 data URI. The popup is a real    */
+/*  top-level tab, displays the plate, and offers an anchor download plus        */
+/*  copy-to-clipboard and right-click/drag-out fallbacks that work anywhere.     */
 
-export const DELIVERY_HASH = "#delivery";
-const DELIVERY_CHANNEL = "editorial-ai:delivery";
-
-export type DeliveryMessage =
-  | { type: "ready" }
-  | { type: "deliver"; kind: "image" | "zip"; name: string; blob: Blob }
-  | { type: "progress"; pct: number; label: string }
-  | { type: "cancel"; reason: string };
-
-function deliveryHref(): string {
-  try {
-    const u = new URL(window.location.href);
-    u.hash = DELIVERY_HASH;
-    return u.toString();
-  } catch {
-    return window.location.href + DELIVERY_HASH;
-  }
+function blobToDataUri(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result as string);
+    reader.onerror = () => reject(reader.error ?? new Error("read failed"));
+    reader.readAsDataURL(blob);
+  });
 }
 
-export function isDeliveryRoute(): boolean {
-  return typeof window !== "undefined" && window.location.hash === DELIVERY_HASH;
+const safeName = (name: string) => name.replace(/["<>\\]/g, "_");
+
+const POPUP_HEAD = (title: string) =>
+  `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
+  `<title>EditorialAI · ${title}</title>` +
+  `<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@1,9..144,500&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">` +
+  `<style>` +
+  `*{box-sizing:border-box}body{margin:0;min-height:100vh;background:#121114;color:#efedea;` +
+  `font-family:'Space Mono',monospace;display:flex;flex-direction:column;align-items:center;padding:40px 24px 48px;` +
+  `background-image:radial-gradient(50rem 32rem at -10% -10%,rgba(140,42,64,.14),transparent 60%),radial-gradient(40rem 30rem at 110% 110%,rgba(176,141,87,.12),transparent 60%)}` +
+  `.kicker{font-size:10px;letter-spacing:.3em;text-transform:uppercase;color:#c6a465}` +
+  `h1{font-family:'Fraunces',serif;font-style:italic;font-weight:500;font-size:30px;margin:14px 0 4px;text-align:center;word-break:break-word}` +
+  `.meta{font-size:11px;color:#8b8781;letter-spacing:.08em;margin:0 0 22px}` +
+  `img{max-width:100%;max-height:52vh;border:1px solid #3a3733;background:#1b181e;display:block;margin-bottom:22px;box-shadow:0 24px 60px -24px rgba(0,0,0,.6)}` +
+  `.btn{display:inline-block;text-decoration:none;background:#f1f0ec;color:#121114;padding:14px 30px;font-family:'Space Mono',monospace;` +
+  `font-size:12px;font-weight:700;letter-spacing:.2em;text-transform:uppercase;transition:background .15s,transform .15s;cursor:pointer;border:none}` +
+  `.btn:hover{background:#c6a465;transform:translateY(-1px)}` +
+  `.ghost{margin-top:12px;background:none;border:1px solid #3a3733;color:#c6a465;padding:10px 22px;font-family:'Space Mono',monospace;` +
+  `font-size:11px;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;transition:border-color .15s}` +
+  `.ghost:hover{border-color:#c6a465}` +
+  `.hint{margin-top:22px;max-width:380px;text-align:center;font-size:11.5px;line-height:1.7;color:#8b8781}` +
+  `.scan{position:fixed;left:0;top:0;height:1px;width:100%;background:linear-gradient(90deg,transparent,rgba(198,164,101,.8),transparent);animation:scan 1.6s linear infinite}` +
+  `@keyframes scan{from{transform:translateY(0)}to{transform:translateY(100vh)}}` +
+  `</style></head><body>`;
+
+const POPUP_FOOT = `</body></html>`;
+
+function writeDoc(tab: Window, html: string): boolean {
+  try {
+    tab.document.open();
+    tab.document.write(html);
+    tab.document.close();
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 /**
- * A one-shot session: open the delivery tab (must be called synchronously
- * inside the click handler) and queue messages until the page reports ready.
+ * Open the delivery popup. MUST be called synchronously inside the click
+ * handler (before any `await`) so the browser's popup blocker stays satisfied.
  */
-export class DeliverySession {
-  readonly tab: Window | null;
-  private channel: BroadcastChannel | null = null;
-  private ready = false;
-  private queue: DeliveryMessage[] = [];
-
-  constructor() {
-    this.tab = this.openTab();
-    if (this.tab && typeof BroadcastChannel !== "undefined") {
-      this.channel = new BroadcastChannel(DELIVERY_CHANNEL);
-      this.channel.onmessage = (e: MessageEvent) => {
-        if ((e.data as DeliveryMessage)?.type === "ready") {
-          this.ready = true;
-          const pending = this.queue;
-          this.queue = [];
-          for (const m of pending) this.channel?.postMessage(m);
-        }
-      };
-    }
+export function openDeliveryPopup(): Window | null {
+  try {
+    const w = window.open("", "_blank", "width=560,height=800");
+    if (!w) return null;
+    writeDoc(
+      w,
+      POPUP_HEAD("Preparing") +
+        `<div class="scan"></div>` +
+        `<p class="kicker">EditorialAI · Darkroom</p>` +
+        `<h1>Developing your file…</h1>` +
+        `<p class="meta">Fetching and grading the plate</p>` +
+        POPUP_FOOT
+    );
+    return w;
+  } catch {
+    return null;
   }
+}
 
-  private openTab(): Window | null {
+/**
+ * Fill an already-open popup with the finished file (base64 data URI), then
+ * trigger the download. `getBlob` runs after the popup is open, so it may be
+ * as slow as the network requires.
+ */
+export async function populateDeliveryPopup(
+  tab: Window,
+  getBlob: () => Promise<Blob | null>,
+  kind: "image" | "zip",
+  baseName: string
+): Promise<boolean> {
+  try {
+    const blob = await getBlob();
+    if (!blob || tab.closed) {
+      if (!tab.closed) {
+        writeDoc(
+          tab,
+          POPUP_HEAD("Unavailable") +
+            `<p class="kicker">EditorialAI · Darkroom</p>` +
+            `<h1>Couldn't fetch that plate</h1>` +
+            `<p class="meta">The source bytes never arrived</p>` +
+            `<p class="hint">The image may have expired (DashScope URLs live ~24h) or the network blocked it. Try regenerating the plate, then download again.</p>` +
+            POPUP_FOOT
+        );
+      }
+      return false;
+    }
+
+    const name = `${safeName(baseName)}.${extFor(blob)}`;
+    const kb = Math.max(1, Math.round(blob.size / 1024));
+    const dataUri = await blobToDataUri(blob);
+    const isImg = kind === "image";
+
+    const body =
+      (isImg ? `<img id="plate" src="${dataUri}" alt="${name}">` : "") +
+      `<p class="kicker">EditorialAI · Darkroom</p>` +
+      `<h1>${name}</h1>` +
+      `<p class="meta">${isImg ? "graded plate" : "session archive"} · ${kb} KB</p>` +
+      `<a id="saveBtn" class="btn" href="${dataUri}" download="${name}">Save to Downloads</a>` +
+      (isImg ? `<button id="copyBtn" class="ghost" type="button">Copy image to clipboard</button>` : "") +
+      `<p class="hint">${
+        isImg
+          ? `Your download starts automatically. If it doesn't, click the button — or right-click the image and choose “Save image as…”, or drag it to your desktop.`
+          : `Your archive is ready — click the button to save it to your Downloads folder.`
+      }</p>` +
+      `<script>` +
+      `window.addEventListener('DOMContentLoaded',function(){try{document.getElementById('saveBtn').click();}catch(e){}});` +
+      (isImg
+        ? `var cb=document.getElementById('copyBtn');if(cb)cb.addEventListener('click',function(){var im=document.getElementById('plate');var c=document.createElement('canvas');c.width=im.naturalWidth;c.height=im.naturalHeight;var x=c.getContext('2d');x.drawImage(im,0,0);c.toBlob(function(b){try{navigator.clipboard.write([new ClipboardItem({'image/png':b})]);cb.textContent='Copied to clipboard';}catch(e){cb.textContent='Clipboard unavailable';}},'image/png');});`
+        : "") +
+      `</` +
+      `script>`;
+
+    if (tab.closed) return false;
+    writeDoc(tab, POPUP_HEAD(name) + body + POPUP_FOOT);
     try {
-      return window.open(deliveryHref(), "_blank", "width=520,height=720");
-    } catch {
-      return null;
-    }
-  }
-
-  get usable(): boolean {
-    return Boolean(this.tab && !this.tab.closed);
-  }
-
-  send(msg: DeliveryMessage): void {
-    if (!this.channel) return;
-    if (this.ready) this.channel.postMessage(msg);
-    else this.queue.push(msg);
-  }
-
-  /** Fire-and-forget convenience: open, deliver one payload, tidy up. */
-  static async deliver(payload: Extract<DeliveryMessage, { type: "deliver" }>): Promise<DeliverySession | null> {
-    const s = new DeliverySession();
-    if (!s.usable) {
-      s.close();
-      return null;
-    }
-    s.send(payload);
-    // Keep the channel alive long enough for the handshake, then retire it.
-    setTimeout(() => s.close(), 20_000);
-    return s;
-  }
-
-  close(): void {
-    try {
-      this.channel?.close();
+      tab.focus();
     } catch {
       /* noop */
     }
-    this.channel = null;
+    return true;
+  } catch {
+    return false;
   }
 }
 

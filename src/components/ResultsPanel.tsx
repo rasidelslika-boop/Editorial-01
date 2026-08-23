@@ -31,10 +31,11 @@ import {
   buildZipArchive,
   cn,
   copyText,
-  DeliverySession,
   extFor,
   fetchBlob,
   highResUrl,
+  openDeliveryPopup,
+  populateDeliveryPopup,
   triggerDownload,
   type ArchiveResult,
 } from "../lib/utils";
@@ -147,131 +148,111 @@ export function ResultsPanel() {
   };
 
   /**
-   * Save the active plate. A trusted top-level delivery tab (the app's own
-   * #delivery route) is opened synchronously inside the click gesture; the
-   * graded bytes are piped over a BroadcastChannel and saved from there —
-   * embedded-preview download restrictions don't apply to real tabs.
+   * Save the active plate. A delivery popup is opened synchronously inside the
+   * click gesture, then the graded bytes are written straight into it as a
+   * base64 data URI — no messaging, no origin coupling. The popup is a real
+   * top-level tab, so its anchor download lands in the Downloads folder.
    */
-  const savePlate = async (kind: "png" | "hq") => {
+  const savePlate = (kind: "png" | "hq") => {
     if (!gen) return;
     const target = kind === "hq" ? highResUrl(gen.url) ?? gen.url : gen.url;
-    const session = new DeliverySession(); // synchronous — gesture preserved
-    const hadTab = session.usable;
-    toast(kind === "hq" ? "Preparing high-res plate" : "Preparing plate", {
-      description: hadTab ? "A delivery tab opened — the save happens there." : undefined,
-      tone: "info",
-    });
-    if (hadTab) session.send({ type: "progress", pct: 12, label: "Fetching plate bytes…" });
+    const baseName = `editorial-plate-${gen.seed}${kind === "hq" ? "-hires" : ""}`;
+    const getBlob = async () => {
+      const blob = await fetchBlob(target);
+      return blob ? await applyGrade(blob, gen.filter) : null;
+    };
 
-    const blob = await fetchBlob(target);
-    if (!blob) {
-      session.send({ type: "cancel", reason: "The plate bytes couldn't be fetched — the URL has likely expired." });
-      toast("Download failed", { description: "The plate couldn't be fetched — it may have expired.", tone: "error" });
-      return;
-    }
-    const graded = await applyGrade(blob, gen.filter);
-    const name = `editorial-plate-${gen.seed}${kind === "hq" ? "-hires" : ""}.${extFor(graded)}`;
-
-    if (hadTab) {
-      session.send({ type: "deliver", kind: "image", name, blob: graded });
-      setTimeout(() => session.close(), 20_000);
-      toast("Plate delivered", {
-        description: "The delivery tab is saving it to your Downloads folder.",
-        tone: "success",
+    const tab = openDeliveryPopup(); // synchronous — gesture preserved
+    if (tab) {
+      toast(kind === "hq" ? "Preparing high-res plate" : "Preparing plate", {
+        description: "A delivery tab opened — the save happens there.",
+        tone: "info",
+      });
+      void populateDeliveryPopup(tab, getBlob, "image", baseName).then((ok) => {
+        if (ok) toast("Plate delivered", { description: "Check the delivery tab — your file is on its way.", tone: "success" });
+        else toast("Download failed", { description: "The plate couldn't be fetched — it may have expired.", tone: "error" });
       });
       return;
     }
 
-    // Popups refused — in-page fallback: anchor click, else open the blob.
-    if (triggerDownload(graded, name)) {
-      toast("Plate saved", { description: `${name} is in your downloads.`, tone: "success" });
-      return;
-    }
-    try {
-      const href = URL.createObjectURL(graded);
-      window.open(href, "_blank", "noopener");
-      setTimeout(() => URL.revokeObjectURL(href), 60_000);
-      toast("Plate opened in a tab", { description: "Right-click the image there → Save image as…", tone: "info" });
-    } catch {
-      toast("Download failed", { description: "The browser refused every save route.", tone: "error" });
-    }
+    // Popups refused — in-page fallback.
+    void (async () => {
+      const graded = await getBlob();
+      if (graded && triggerDownload(graded, `${baseName}.${extFor(graded)}`)) {
+        toast("Plate saved", { description: `${baseName} is in your downloads.`, tone: "success" });
+      } else {
+        toast("Download failed", { description: "The browser refused every save route.", tone: "error" });
+      }
+    })();
   };
 
   /** One click — every plate in the contact sheet, zipped and delivered. */
-  const archiveSession = async () => {
+  const archiveSession = () => {
     if (packing || !generations.length) return;
-    const session = new DeliverySession(); // synchronous — gesture preserved
-    const hadTab = session.usable;
+    const items = generations.map((g, i) => ({
+      url: g.url,
+      name: `plate-${String(generations.length - i).padStart(2, "0")}-seed-${g.seed}`,
+      filter: g.filter,
+    }));
+    const stamp = new Date().toISOString().slice(0, 10);
+    const baseName = `editorial-ai-session-${stamp}`;
+
     setPacking(true);
     setPackStep({ done: 0, total: generations.length });
     toast("Packing the session", {
       description: `Archiving ${generations.length} plate${generations.length === 1 ? "" : "s"}…`,
       tone: "info",
     });
-    try {
-      const result = await buildZipArchive(
-        generations.map((g, i) => ({
-          url: g.url,
-          name: `plate-${String(generations.length - i).padStart(2, "0")}-seed-${g.seed}`,
-          filter: g.filter,
-        })),
-        (done, total) => {
-          setPackStep({ done, total });
-          if (hadTab) session.send({ type: "progress", pct: Math.round((done / total) * 90), label: `Packing plate ${done} of ${total}…` });
-        }
-      );
 
-      if (!result) {
-        session.send({ type: "cancel", reason: "No plates could be fetched — the URLs have likely expired." });
-        toast("Archive failed", {
-          description: "No plates could be fetched — DashScope URLs expire after 24h, so older plates can't be re-downloaded.",
-          tone: "error",
+    const getBlob = async () => {
+      const result = await buildZipArchive(items, (done, total) => setPackStep({ done, total }));
+      if (result) setArchive(result);
+      return result?.blob ?? null;
+    };
+
+    const tab = openDeliveryPopup(); // synchronous — gesture preserved
+    if (tab) {
+      void populateDeliveryPopup(tab, getBlob, "zip", baseName)
+        .then((ok) => {
+          if (ok) toast("Archive delivered", { description: "The delivery tab is saving your ZIP now.", tone: "success" });
+          else
+            toast("Archive failed", {
+              description: "No plates could be fetched — DashScope URLs expire after 24h.",
+              tone: "error",
+            });
+        })
+        .finally(() => {
+          setPacking(false);
+          setPackStep(null);
         });
-        return;
-      }
-
-      if (hadTab) {
-        session.send({ type: "deliver", kind: "zip", name: result.filename, blob: result.blob });
-        setTimeout(() => session.close(), 20_000);
-        toast("Archive delivered", {
-          description: `${result.saved} plate${result.saved === 1 ? "" : "s"} zipped — the delivery tab is saving it now.`,
-          tone: "success",
-        });
-        return;
-      }
-
-      // Popup was blocked — the ready-bar gives a gesture-fresh Save ZIP button.
-      setArchive(result);
-      const skipped = result.failed ? ` · ${result.failed} skipped (expired)` : "";
-      toast("Archive ready", {
-        description: `${result.saved} plate${result.saved === 1 ? "" : "s"} zipped${skipped} — tap Save ZIP below.`,
-        tone: "info",
-      });
-    } catch (err) {
-      console.warn("[EditorialAI] Archive failed", err);
-      session.send({ type: "cancel", reason: err instanceof Error ? err.message : "Something went wrong while zipping." });
-      toast("Archive failed", {
-        description: err instanceof Error ? err.message : "Something went wrong while zipping the session.",
-        tone: "error",
-      });
-    } finally {
-      setPacking(false);
-      setPackStep(null);
+      return;
     }
+
+    // Popup was blocked — build in-page and offer the ready-bar's Save ZIP.
+    void getBlob()
+      .then((blob) => {
+        if (blob) toast("Archive ready", { description: "Tap Save ZIP below to download it.", tone: "info" });
+        else toast("Archive failed", { description: "No plates could be fetched.", tone: "error" });
+      })
+      .finally(() => {
+        setPacking(false);
+        setPackStep(null);
+      });
   };
 
   /** Save from the ready-bar — the blob is already in memory, so this is instant. */
   const saveZipNow = () => {
     if (!archive) return;
-    const session = new DeliverySession();
-    if (session.usable) {
-      session.send({ type: "deliver", kind: "zip", name: archive.filename, blob: archive.blob });
-      setTimeout(() => session.close(), 20_000);
-      toast("Archive delivered", {
-        description: `${archive.saved} plate${archive.saved === 1 ? "" : "s"} — check the delivery tab.`,
-        tone: "success",
+    const tab = openDeliveryPopup();
+    if (tab) {
+      void populateDeliveryPopup(tab, async () => archive.blob, "zip", archive.filename.replace(/\.zip$/, "")).then((ok) => {
+        if (ok) {
+          toast("Archive delivered", { description: `${archive.saved} plate${archive.saved === 1 ? "" : "s"} — check the delivery tab.`, tone: "success" });
+          setArchive(null);
+        } else {
+          toast("Save failed", { description: "The delivery tab couldn't write the file.", tone: "error" });
+        }
       });
-      setArchive(null);
       return;
     }
     // No popups allowed — fall back to a gesture-fresh anchor click.
