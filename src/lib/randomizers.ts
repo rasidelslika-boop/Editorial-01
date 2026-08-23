@@ -533,15 +533,26 @@ export const SERIES_FRAMINGS = [
   "tight environmental frame",
 ] as const;
 
+/** The default register — poised, editorial, high-fashion. */
 export const SERIES_EXPRESSIONS = [
-  "a fierce direct stare into the lens",
-  "laughing unguarded, caught mid-moment",
+  "a fierce, direct stare into the lens",
   "a serene gaze just past the camera",
   "a smouldering over-the-shoulder look",
-  "eyes closed, chin lifted to the sky",
-  "head thrown back in full laughter",
   "cool and unbothered, utterly at ease",
-  "a surprised wide-eyed glance",
+  "poised and regal, chin lifted",
+  "a pensive downward glance, lashes low",
+  "eyes closed, face tilted to the light",
+  "aloof elegance, distant and untouchable",
+  "quiet confidence, lips barely parted",
+  "a sculpted, statuesque stillness",
+] as const;
+
+/** Drawn sparingly (~1 in 5 frames) — fun, alive, but never the default. */
+export const SERIES_FUN_EXPRESSIONS = [
+  "laughing unguarded, caught mid-moment",
+  "a playful grin with raised brows",
+  "head tilted in a bright, easy smile",
+  "joyful and animated, caught mid-laugh",
 ] as const;
 
 export const MOTION_MODIFIERS = [
@@ -589,8 +600,11 @@ export function drawSeriesFrames(n: number): import("../types").SeriesFrame[] {
     for (let guard = 0; usedPoses.has(pose) && guard < 14; guard++) pose = pick(SERIES_POSES);
     usedPoses.add(pose);
 
-    let expression = pick(SERIES_EXPRESSIONS);
-    for (let guard = 0; usedExpressions.has(expression) && guard < 8; guard++) expression = pick(SERIES_EXPRESSIONS);
+    // Mostly editorial register; a fun, excited look lands roughly 1 frame in 5.
+    const fun = Math.random() < 0.2;
+    const pool = fun ? SERIES_FUN_EXPRESSIONS : SERIES_EXPRESSIONS;
+    let expression = pick(pool);
+    for (let guard = 0; usedExpressions.has(expression) && guard < 8; guard++) expression = pick(pool);
     usedExpressions.add(expression);
 
     // Action poses usually earn a motion treatment; static ones rarely do.

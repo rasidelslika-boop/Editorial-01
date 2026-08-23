@@ -113,17 +113,19 @@ export function composePrompt(form: FormState, opts?: { baseLocked?: boolean }):
 }
 
 /**
- * A Series frame. The whole prompt is built around one contract: the model,
- * the outfit and — crucially — the location and backdrop are IDENTICAL in
- * every frame of the shoot; only her pose, expression and framing change.
- * That pinning language is what keeps the background from drifting between
- * plates.
+ * A Series frame. Two hard rules shape the wording:
+ *   1. It must read as ONE standalone photograph — never "frame X of N" or
+ *      "series" language, which makes diffusion models render collages and
+ *      multi-panel contact sheets in a single image.
+ *   2. The model, outfit and setting are restated verbatim, so every plate of
+ *      the shoot keeps the identical backdrop and look while pose, expression
+ *      and framing change.
  */
-export function composeSeriesPlate(form: FormState, frame: SeriesFrame, index: number, total: number): string {
+export function composeSeriesPlate(form: FormState, frame: SeriesFrame): string {
   const identity = form.model.trim() || "a breathtaking 21-year-old woman";
   const traits = museText(form);
   const muse = traits ? `${identity}, ${traits}` : identity;
-  const outfit = form.outfit.trim() || "the same styled look";
+  const outfit = form.outfit.trim() || "her styled look";
 
   const settingBits = [form.location.trim(), lightingText(form), `shot on ${cameraText(form)}`]
     .filter((s) => s && s.length > 2)
@@ -132,13 +134,11 @@ export function composeSeriesPlate(form: FormState, frame: SeriesFrame, index: n
   const motion = frame.motion ? `, ${frame.motion}` : "";
 
   const prompt =
-    `Editorial series frame ${index + 1} of ${total}, one continuous photoshoot — ` +
-    `every frame keeps the exact same model, the exact same outfit and the exact same location; ` +
-    `only her pose, expression and framing change from frame to frame. ` +
-    `Identical backdrop and setting in every frame: ${settingBits}` +
+    `A single standalone fashion editorial photograph — exactly one model in one scene, no collage, no grid, no split panels. ` +
+    `The setting: ${settingBits}` +
     `${ref && ref !== "none" ? `, in the style of ${ref}` : ""}. ` +
-    `The same model — ${muse} — wearing the exact same outfit: ${outfit}. ` +
-    `This frame: ${frame.framing}, ${frame.pose}${motion}, ${frame.expression}, ` +
+    `The model is ${muse}, wearing exactly this outfit: ${outfit}. ` +
+    `In this photograph she is captured in a ${frame.framing}, ${frame.pose}${motion}, ${frame.expression}, ` +
     `hyper-detailed skin texture, refined colour grade, professional fashion photography, 8k`;
 
   if (form.engine === "mj6") {

@@ -766,10 +766,13 @@ function GenerateBar() {
       description: `${teaser}…${wildcards ? ` + ${wildcards} wildcard frame${wildcards > 1 ? "s" : ""}` : ""}`,
       tone: "info",
     });
+    // Engines that honour a negative prompt get an extra anti-collage guard.
+    const baseNeg = (settings.negative ?? "").trim();
+    const seriesNegative = `${baseNeg ? baseNeg + ", " : ""}grid, collage, multiple photos in one image, split screen, triptych, contact sheet, multiple people`;
     void generate({
       settings,
-      perPlate: frames.map((f) => ({ pose: f.pose, expression: f.expression })),
-      compose: (ps, i) => composeSeriesPlate(ps, frames[i], i, n),
+      perPlate: frames.map((f) => ({ pose: f.pose, expression: f.expression, negative: seriesNegative })),
+      compose: (ps, i) => composeSeriesPlate(ps, frames[i]),
       seedStep: 0,
     });
   };
