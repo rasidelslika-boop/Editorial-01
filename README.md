@@ -116,6 +116,12 @@ in `.env.local` and rebuild.
 
 **Keep in mind:**
 
+- The Qwen provider is self-healing: it tries the OpenAI-compatible endpoint,
+  and on a 404/400 probes the workspace's `/models` list, retries with the
+  closest available image model, then falls back to the native DashScope async
+  API (`/api/v1/.../image-synthesis` + task polling) on the same gateway. If a
+  shoot still fails with 404, the model isn't enabled in your workspace —
+  enable Qwen-Image / Wanx 2.1 in the Model Studio console.
 - The baked-in key lives in the client bundle and is publicly readable — rotate
   it in the Model Studio console after testing, or move it into the relay as a
   Worker secret (`wrangler secret put DASHSCOPE_API_KEY`).

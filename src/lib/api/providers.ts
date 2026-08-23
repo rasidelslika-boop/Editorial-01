@@ -1,4 +1,11 @@
-import { liveDimensions, studioProvider, type GenerateRequest, type ImageProvider, type ProviderImage } from "./mock";
+import {
+  liveDimensions,
+  studioProvider,
+  type GenerateRequest,
+  type ImageProvider,
+  type ProgressFn,
+  type ProviderImage,
+} from "./mock";
 import { ratioDimensions } from "../promptBuilder";
 
 /* ------------------------------------------------------------------ */
@@ -188,21 +195,246 @@ export function hasDashscopeKey(): boolean {
 }
 
 /**
- * Endpoint base. DashScope does not send browser CORS headers, so direct
- * client calls are usually blocked — point `VITE_DASHSCOPE_RELAY` at the
- * relay worker from `/worker` (README) to route around that.
+ * Gateway host — the owner's ap-southeast-1 MaaS workspace, or the relay
+ * worker from `/worker` when `VITE_DASHSCOPE_RELAY` is set (see README).
+ * Generic endpoints for other accounts:
+ *   intl:  https://dashscope-intl.aliyuncs.com
+ *   china: https://dashscope.aliyuncs.com
  */
-function dashscopeBase(): string {
+function dashscopeHost(): string {
   const relay = env.VITE_DASHSCOPE_RELAY;
   if (relay) return relay.replace(/\/+$/, "");
-  // Baked default: the owner's ap-southeast-1 MaaS workspace gateway.
-  // Generic endpoints for other accounts:
-  //   intl:   https://dashscope-intl.aliyuncs.com/compatible-mode/v1
-  //   china:  https://dashscope.aliyuncs.com/compatible-mode/v1
-  return (
-    env.VITE_DASHSCOPE_BASE_URL ??
-    "https://ws-ou063af90w6dlklj.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1"
-  ).replace(/\/+$/, "");
+  return "https://ws-ou063af90w6dlklj.ap-southeast-1.maas.aliyuncs.com";
+}
+
+/** OpenAI-compatible base — the route the studio tries first. */
+function dashscopeBase(): string {
+  return (env.VITE_DASHSCOPE_BASE_URL ?? `${dashscopeHost()}/compatible-mode/v1`).replace(/\/+$/, "");
+}
+
+/** Native DashScope async API on the same gateway — the fallback route. */
+function dashscopeNativeBase(): string {
+  const origin = dashscopeBase().match(/^(https?:\/\/[^/]+)/)?.[1];
+  return origin ? `${origin}/api/v1` : `${dashscopeHost()}/api/v1`;
+}
+
+/* ------------------------- Multi-route generation ------------------------- */
+/*  Route A  — OpenAI-compatible `POST /images/generations` (sync).           */
+/*  Route A2 — on 404/400, probe the workspace's `/models` and retry with the */
+/*             closest available image model (regional workspaces expose      */
+/*             different model lists).                                        */
+/*  Route B  — native DashScope async API on the same gateway                 */
+/*             (`/api/v1/services/aigc/text2image/image-synthesis` + polling).*/
+/*  If the endpoint is unreachable from the browser at all, the free studio   */
+/*  engine finishes the shoot so it never dead-ends.                          */
+/* -------------------------------------------------------------------------- */
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+class HttpError extends Error {
+  status: number;
+  constructor(status: number, message: string) {
+    super(message);
+    this.status = status;
+  }
+}
+
+function isNetworkError(err: unknown): boolean {
+  if (err instanceof DOMException && err.name === "AbortError") return false;
+  return err instanceof TypeError;
+}
+
+interface OneShot {
+  key: string;
+  base: string;
+  nativeBase: string;
+  model: string;
+  size: string;
+  seed: number;
+  prompt: string;
+  negative?: string;
+  family: DashScopeFamily;
+  onProgress?: ProgressFn;
+}
+
+type CompatResult = { url: string } | { status: number } | { network: true };
+
+async function tryCompatible(ctx: OneShot, diag: { last?: string }): Promise<CompatResult> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 90_000);
+  try {
+    const res = await fetch(`${ctx.base}/images/generations`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${ctx.key}` },
+      body: JSON.stringify({
+        model: ctx.model,
+        prompt: ctx.prompt,
+        ...(ctx.family === "wanx" || ctx.family === "qwen" ? { negative_prompt: ctx.negative } : {}),
+        size: ctx.size,
+        n: 1,
+        seed: ctx.seed,
+      }),
+      signal: ctrl.signal,
+    });
+    if (res.ok) {
+      const data = await res.json().catch(() => null);
+      const url: string | undefined = data?.data?.[0]?.url;
+      if (url) return { url };
+      diag.last = "compatible-mode returned 200 but no image URL";
+      return { status: 502 };
+    }
+    const body = await res.text().catch(() => "");
+    diag.last = `compatible-mode HTTP ${res.status} — ${body.slice(0, 180)}`;
+    console.warn(`[EditorialAI] ${diag.last}`);
+    return { status: res.status };
+  } catch (err) {
+    if (err instanceof DOMException && err.name === "AbortError") {
+      diag.last = "compatible-mode timed out after 90s";
+      return { status: 408 };
+    }
+    return { network: true };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Cached probe of the workspace's available models. */
+let modelProbe: Promise<string[] | null> | null = null;
+function probeModels(base: string, key: string): Promise<string[] | null> {
+  if (!modelProbe) {
+    modelProbe = (async () => {
+      try {
+        const res = await fetch(`${base}/models`, { headers: { Authorization: `Bearer ${key}` } });
+        if (!res.ok) return null;
+        const data = await res.json().catch(() => null);
+        const ids = (data?.data ?? [])
+          .map((m: { id?: string }) => m?.id)
+          .filter((x: unknown): x is string => typeof x === "string");
+        return ids.length ? ids : null;
+      } catch {
+        return null;
+      }
+    })();
+  }
+  return modelProbe;
+}
+
+const IMAGE_HINTS = ["qwen-image", "wanx", "flux", "stable-diffusion", "sd3", "kolors"];
+
+function pickAvailableImageModel(models: string[], preferred: string): string | null {
+  if (models.includes(preferred)) return preferred;
+  const candidates = models.filter((m) => IMAGE_HINTS.some((h) => m.toLowerCase().includes(h)));
+  if (!candidates.length) return null;
+  const family = preferred.split(/[-.]/)[0];
+  return candidates.find((m) => m.toLowerCase().startsWith(family)) ?? candidates[0];
+}
+
+async function nativeGenerate(ctx: OneShot, diag: { last?: string }): Promise<string> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 30_000);
+  let res: Response;
+  try {
+    res = await fetch(`${ctx.nativeBase}/services/aigc/text2image/image-synthesis`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${ctx.key}`,
+        "X-DashScope-Async": "enable",
+      },
+      body: JSON.stringify({
+        model: ctx.model,
+        input: {
+          prompt: ctx.prompt,
+          ...(ctx.negative ? { negative_prompt: ctx.negative } : {}),
+        },
+        parameters: {
+          size: ctx.size,
+          n: 1,
+          seed: ctx.seed,
+          ...(ctx.family !== "qwen" ? { prompt_extend: true } : {}),
+        },
+      }),
+      signal: ctrl.signal,
+    });
+  } finally {
+    clearTimeout(timer);
+  }
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    diag.last = `native API HTTP ${res.status} — ${body.slice(0, 180)}`;
+    throw new HttpError(res.status, diag.last);
+  }
+
+  const data = await res.json().catch(() => null);
+  const taskId: string | undefined = data?.output?.task_id;
+  if (!taskId) throw new Error("DashScope accepted the job but returned no task id");
+
+  // Poll the task until the plate is developed (~2 min ceiling).
+  for (let i = 0; i < 48; i++) {
+    await sleep(2500);
+    ctx.onProgress?.("Developing the plate", 30 + Math.min(55, i * 2));
+    const poll = await fetch(`${ctx.nativeBase}/tasks/${taskId}`, {
+      headers: { Authorization: `Bearer ${ctx.key}` },
+    }).catch(() => null);
+    if (!poll || !poll.ok) continue;
+    const t = await poll.json().catch(() => null);
+    const status: string | undefined = t?.output?.task_status;
+    if (status === "SUCCEEDED") {
+      const url: string | undefined = t?.output?.results?.[0]?.url;
+      if (url) return url;
+      throw new Error("DashScope task succeeded but returned no image URL");
+    }
+    if (status && status !== "PENDING" && status !== "RUNNING") {
+      throw new Error(`DashScope task ${status.toLowerCase()}: ${t?.output?.message ?? "no details"}`);
+    }
+  }
+  throw new Error("DashScope task timed out after ~2 minutes");
+}
+
+async function generateOne(ctx: OneShot): Promise<string> {
+  const diag: { last?: string } = {};
+
+  // Route A — OpenAI-compatible sync call.
+  const compat = await tryCompatible(ctx, diag);
+  if ("url" in compat) return compat.url;
+
+  // Route A2 — route/model missing? Probe the workspace and retry with the
+  // closest available image model.
+  if (
+    "status" in compat &&
+    (compat.status === 404 || compat.status === 405 || compat.status === 400)
+  ) {
+    const models = await probeModels(ctx.base, ctx.key);
+    if (models) {
+      const alt = pickAvailableImageModel(models, ctx.model);
+      if (alt && alt !== ctx.model) {
+        console.info(`[EditorialAI] "${ctx.model}" unavailable in workspace — retrying with "${alt}"`);
+        ctx.onProgress?.(`Retrying with ${alt}`, 24);
+        const retry = await tryCompatible({ ...ctx, model: alt }, diag);
+        if ("url" in retry) return retry.url;
+        if ("network" in retry) throw new TypeError("Failed to fetch");
+      } else if (!alt) {
+        diag.last = `no image models found among ${models.length} workspace models`;
+      }
+    }
+  }
+
+  if ("network" in compat) throw new TypeError("Failed to fetch");
+
+  // Route B — native DashScope async API on the same gateway.
+  try {
+    return await nativeGenerate(ctx, diag);
+  } catch (err) {
+    if (isNetworkError(err)) throw err; // let the studio engine take over
+    const hint =
+      err instanceof HttpError && err.status === 404
+        ? " The model may not be enabled in this Model Studio workspace — enable Qwen-Image / Wanx 2.1 in the console, or pick another engine."
+        : "";
+    throw new Error(
+      `${err instanceof Error ? err.message : "DashScope render failed"}.${hint}${diag.last ? ` (last: ${diag.last})` : ""}`
+    );
+  }
 }
 
 export function qwenProvider(engine: string): ImageProvider {
@@ -212,56 +444,43 @@ export function qwenProvider(engine: string): ImageProvider {
     label: spec.model,
 
     async generate(req, onProgress) {
-      const key = dashscopeKey();
-      const base = dashscopeBase();
-
-      // Upscaling on Wanx Turbo promotes to the Plus model for a true quality lift.
-      const model =
-        req.quality === "hq" && spec.model === "wanx2.1-t2i-turbo" ? "wanx2.1-t2i-plus" : spec.model;
-      const size = dashScopeSize(spec.family, req.ratio, req.quality === "hq");
+      const baseCtx = {
+        key: dashscopeKey(),
+        base: dashscopeBase(),
+        nativeBase: dashscopeNativeBase(),
+        family: spec.family,
+        prompt: req.prompt,
+        negative: req.negative,
+        onProgress,
+      };
 
       const images: ProviderImage[] = [];
       for (let i = 0; i < req.count; i++) {
-        onProgress?.(`Rendering plate ${i + 1} of ${req.count} · ${model}`, 18 + (i / req.count) * 55);
+        // Upscaling on Wanx Turbo promotes to the Plus model for a true quality lift.
+        const model =
+          req.quality === "hq" && spec.model === "wanx2.1-t2i-turbo" ? "wanx2.1-t2i-plus" : spec.model;
+        const size = dashScopeSize(spec.family, req.ratio, req.quality === "hq");
+        const seed = req.seed + i;
 
-        const ctrl = new AbortController();
-        const timer = setTimeout(() => ctrl.abort(), 90_000);
-        let res: Response;
+        onProgress?.(
+          req.count > 1 ? `Rendering plate ${i + 1} of ${req.count} · ${model}` : `Exposing the frame · ${model}`,
+          14 + (i / req.count) * 50
+        );
+
         try {
-          res = await fetch(`${base}/images/generations`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-            body: JSON.stringify({
-              model,
-              prompt: req.prompt,
-              ...(spec.family === "wanx" || spec.family === "qwen" ? { negative_prompt: req.negative } : {}),
-              size,
-              n: 1,
-              seed: req.seed + i,
-            }),
-            signal: ctrl.signal,
-          });
+          const url = await generateOne({ ...baseCtx, model, size, seed });
+          images.push({ url, seed });
         } catch (err) {
-          clearTimeout(timer);
-          if (err instanceof DOMException && err.name === "AbortError") {
-            throw new Error("DashScope render timed out after 90s");
+          if (isNetworkError(err)) {
+            // Endpoint unreachable from the browser (CORS/offline) — the free
+            // studio engine finishes the shoot so it never dead-ends.
+            console.warn("[EditorialAI] DashScope unreachable — studio engine takes over.", err);
+            const remaining = await studioProvider.generate(req, onProgress);
+            return [...images, ...remaining.slice(images.length).map((img) => ({ ...img, fallback: true }))];
           }
-          // Almost always browser CORS — hand the shoot to the studio engine so it still lands.
-          console.warn("[EditorialAI] DashScope direct call failed (likely CORS). Falling back to studio engine.", err);
-          const fallback = await studioProvider.generate(req, onProgress);
-          return fallback.map((img) => ({ ...img, fallback: true }));
-        } finally {
-          clearTimeout(timer);
+          throw err;
         }
-
-        if (!res.ok) {
-          const body = await res.text().catch(() => "");
-          throw new Error(`DashScope error ${res.status}: ${body.slice(0, 220)}`);
-        }
-        const data = await res.json();
-        const url: string | undefined = data?.data?.[0]?.url;
-        if (!url) throw new Error("DashScope returned no image URL");
-        images.push({ url, seed: req.seed + i });
+        if (i < req.count - 1) await sleep(900);
       }
       onProgress?.("Printing", 100);
       return images;
