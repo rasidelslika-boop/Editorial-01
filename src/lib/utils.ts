@@ -170,7 +170,7 @@ function blobToDataUri(blob: Blob): Promise<string> {
   });
 }
 
-const safeName = (name: string) => name.replace(/["<>\\]/g, "_");
+const safeName = (name: string) => name.replace(/["'<>\\]/g, "_");
 
 const POPUP_HEAD = (title: string) =>
   `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
@@ -191,6 +191,11 @@ const POPUP_HEAD = (title: string) =>
   `font-size:11px;letter-spacing:.16em;text-transform:uppercase;cursor:pointer;transition:border-color .15s}` +
   `.ghost:hover{border-color:#c6a465}` +
   `.hint{margin-top:22px;max-width:380px;text-align:center;font-size:11.5px;line-height:1.7;color:#8b8781}` +
+  `.status{min-height:16px;margin-top:14px;font-size:11px;letter-spacing:.06em;color:#c6a465;text-align:center}` +
+  `.zipart{width:132px;height:132px;border:1px solid #3a3733;background:#1b181e;display:grid;place-items:center;margin-bottom:22px;` +
+  `box-shadow:0 24px 60px -24px rgba(0,0,0,.6);position:relative;overflow:hidden}` +
+  `.zipart::after{content:'';position:absolute;left:0;top:0;height:1px;width:100%;background:linear-gradient(90deg,transparent,rgba(198,164,101,.7),transparent);animation:scan 1.8s linear infinite}` +
+  `.fname{font-size:10px;letter-spacing:.12em;color:#8b8781;margin:-14px 0 20px;word-break:break-all;text-align:center}` +
   `.scan{position:fixed;left:0;top:0;height:1px;width:100%;background:linear-gradient(90deg,transparent,rgba(198,164,101,.8),transparent);animation:scan 1.6s linear infinite}` +
   `@keyframes scan{from{transform:translateY(0)}to{transform:translateY(100vh)}}` +
   `</style></head><body>`;
@@ -259,28 +264,57 @@ export async function populateDeliveryPopup(
       return false;
     }
 
-    const name = `${safeName(baseName)}.${extFor(blob)}`;
+    // Images take their extension from the bytes; archives are always .zip.
+    const name = kind === "zip" ? (baseName.endsWith(".zip") ? safeName(baseName) : `${safeName(baseName)}.zip`) : `${safeName(baseName)}.${extFor(blob)}`;
     const kb = Math.max(1, Math.round(blob.size / 1024));
     const dataUri = await blobToDataUri(blob);
     const isImg = kind === "image";
 
+    const zipGlyph =
+      `<div class="zipart"><svg width="56" height="56" viewBox="0 0 24 24" fill="none" stroke="#c6a465" stroke-width="1.4">` +
+      `<rect x="3" y="4" width="18" height="4" rx="1"/><path d="M5 8v10a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8"/><path d="M10 12h4"/></svg></div>`;
+
     const body =
-      (isImg ? `<img id="plate" src="${dataUri}" alt="${name}">` : "") +
+      (isImg ? `<img id="plate" src="${dataUri}" alt="${name}">` : zipGlyph) +
       `<p class="kicker">EditorialAI · Darkroom</p>` +
-      `<h1>${name}</h1>` +
+      `<h1>${isImg ? "Plate developed" : "Session archived"}</h1>` +
+      `<p class="fname">${name}</p>` +
       `<p class="meta">${isImg ? "graded plate" : "session archive"} · ${kb} KB</p>` +
+      // A real anchor (so right-click → "Save link as…" always works with the
+      // right name); the click handler upgrades it to the native save dialog.
       `<a id="saveBtn" class="btn" href="${dataUri}" download="${name}">Save to Downloads</a>` +
+      `<a id="dlAuto" style="display:none" href="${dataUri}" download="${name}"></a>` +
       (isImg ? `<button id="copyBtn" class="ghost" type="button">Copy image to clipboard</button>` : "") +
+      `<p id="status" class="status"></p>` +
       `<p class="hint">${
         isImg
           ? `Your download starts automatically. If it doesn't, click the button — or right-click the image and choose “Save image as…”, or drag it to your desktop.`
-          : `Your archive is ready — click the button to save it to your Downloads folder.`
+          : `Click the button to open your browser's save dialog (it lands in Downloads). If that's blocked, right-click the button and choose “Save link as…”.`
       }</p>` +
       `<script>` +
-      `window.addEventListener('DOMContentLoaded',function(){try{document.getElementById('saveBtn').click();}catch(e){}});` +
+      `var NAME=${JSON.stringify(name)};` +
+      `var DATA=${JSON.stringify(dataUri)};` +
+      `function setStatus(t){var s=document.getElementById('status');if(s)s.textContent=t;}` +
+      `function doSave(){` +
+      `setStatus('Opening the save dialog…');` +
+      `return fetch(DATA).then(function(r){return r.blob();}).then(function(blob){` +
+      `return window.showSaveFilePicker({suggestedName:NAME}).then(function(handle){` +
+      `return handle.createWritable().then(function(w){return w.write(blob).then(function(){return w.close();});});` +
+      `});}).then(function(){` +
+      `setStatus('Saved — check your Downloads folder.');` +
+      `var b=document.getElementById('saveBtn');if(b)b.textContent='Saved ✓';` +
+      `}).catch(function(err){` +
+      `if(err&&err.name==='AbortError'){setStatus('');return;}` +
+      `setStatus('Save dialog was blocked — right-click the button and choose "Save link as…" instead.');` +
+      `});}` +
+      `window.addEventListener('DOMContentLoaded',function(){` +
+      `var b=document.getElementById('saveBtn');` +
+      `if(b)b.addEventListener('click',function(e){if(window.showSaveFilePicker){e.preventDefault();doSave();}});` +
+      `setTimeout(function(){try{document.getElementById('dlAuto').click();}catch(e){}},600);` +
       (isImg
         ? `var cb=document.getElementById('copyBtn');if(cb)cb.addEventListener('click',function(){var im=document.getElementById('plate');var c=document.createElement('canvas');c.width=im.naturalWidth;c.height=im.naturalHeight;var x=c.getContext('2d');x.drawImage(im,0,0);c.toBlob(function(b){try{navigator.clipboard.write([new ClipboardItem({'image/png':b})]);cb.textContent='Copied to clipboard';}catch(e){cb.textContent='Clipboard unavailable';}},'image/png');});`
         : "") +
+      `});` +
       `</` +
       `script>`;
 
@@ -342,6 +376,7 @@ export function extFor(blob: Blob): string {
   if (blob.type.includes("png")) return "png";
   if (blob.type.includes("webp")) return "webp";
   if (blob.type.includes("gif")) return "gif";
+  if (blob.type.includes("zip")) return "zip";
   return "jpg";
 }
 
