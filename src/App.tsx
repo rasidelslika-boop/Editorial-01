@@ -8,6 +8,8 @@ import { QuickActionModal } from "./components/QuickActionModal";
 import { CompareOverlay } from "./components/CompareOverlay";
 import { HistoryDrawer } from "./components/HistoryDrawer";
 import { Toasts } from "./components/Toasts";
+import { DeliveryPage } from "./components/DeliveryPage";
+import { isDeliveryRoute } from "./lib/utils";
 
 /** Layered ambient backdrop: grain, soft tints, and an oversized folio mark. */
 function AmbientBackground() {
@@ -25,6 +27,11 @@ function AmbientBackground() {
 export default function App() {
   const theme = useUIStore((s) => s.theme);
   useKeyboardShortcuts();
+
+  // The #delivery route is a trusted top-level save page — render it alone.
+  if (isDeliveryRoute()) {
+    return <DeliveryPage />;
+  }
 
   useEffect(() => {
     const root = document.documentElement;

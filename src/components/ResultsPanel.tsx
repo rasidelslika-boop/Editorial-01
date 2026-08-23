@@ -27,13 +27,15 @@ import { useUIStore } from "../stores/ui";
 import { promptSummary } from "../lib/promptBuilder";
 import { SCENE_STARTERS } from "../lib/presets";
 import {
+  applyGrade,
   buildZipArchive,
   cn,
   copyText,
-  deliverToBridge,
-  downloadImage,
+  DeliverySession,
+  extFor,
+  fetchBlob,
   highResUrl,
-  openDownloadBridge,
+  triggerDownload,
   type ArchiveResult,
 } from "../lib/utils";
 import type { Generation } from "../types";
@@ -145,36 +147,61 @@ export function ResultsPanel() {
   };
 
   /**
-   * Save the active plate. Opens a top-level delivery tab synchronously
-   * inside the click gesture — embedded preview iframes strip programmatic
-   * downloads, but a real tab saves to the Downloads folder every time.
+   * Save the active plate. A trusted top-level delivery tab (the app's own
+   * #delivery route) is opened synchronously inside the click gesture; the
+   * graded bytes are piped over a BroadcastChannel and saved from there —
+   * embedded-preview download restrictions don't apply to real tabs.
    */
   const savePlate = async (kind: "png" | "hq") => {
     if (!gen) return;
     const target = kind === "hq" ? highResUrl(gen.url) ?? gen.url : gen.url;
-    const name = `editorial-plate-${gen.seed}${kind === "hq" ? "-hires" : ""}`;
-    const bridge = openDownloadBridge(); // synchronous — gesture preserved
+    const session = new DeliverySession(); // synchronous — gesture preserved
+    const hadTab = session.usable;
     toast(kind === "hq" ? "Preparing high-res plate" : "Preparing plate", {
-      description: bridge ? "A delivery tab opened — the file saves from there." : undefined,
+      description: hadTab ? "A delivery tab opened — the save happens there." : undefined,
       tone: "info",
     });
-    const status = await downloadImage(target, name, gen.filter, bridge);
-    if (status === "saved") {
-      toast("Plate delivered", { description: "Check the delivery tab — your save is on its way to Downloads.", tone: "success" });
-    } else if (status === "opened") {
-      toast("Full-size plate opened", {
-        description: "The delivery tab shows the original — right-click it → Save image as…",
-        tone: "info",
-      });
-    } else {
+    if (hadTab) session.send({ type: "progress", pct: 12, label: "Fetching plate bytes…" });
+
+    const blob = await fetchBlob(target);
+    if (!blob) {
+      session.send({ type: "cancel", reason: "The plate bytes couldn't be fetched — the URL has likely expired." });
       toast("Download failed", { description: "The plate couldn't be fetched — it may have expired.", tone: "error" });
+      return;
+    }
+    const graded = await applyGrade(blob, gen.filter);
+    const name = `editorial-plate-${gen.seed}${kind === "hq" ? "-hires" : ""}.${extFor(graded)}`;
+
+    if (hadTab) {
+      session.send({ type: "deliver", kind: "image", name, blob: graded });
+      setTimeout(() => session.close(), 20_000);
+      toast("Plate delivered", {
+        description: "The delivery tab is saving it to your Downloads folder.",
+        tone: "success",
+      });
+      return;
+    }
+
+    // Popups refused — in-page fallback: anchor click, else open the blob.
+    if (triggerDownload(graded, name)) {
+      toast("Plate saved", { description: `${name} is in your downloads.`, tone: "success" });
+      return;
+    }
+    try {
+      const href = URL.createObjectURL(graded);
+      window.open(href, "_blank", "noopener");
+      setTimeout(() => URL.revokeObjectURL(href), 60_000);
+      toast("Plate opened in a tab", { description: "Right-click the image there → Save image as…", tone: "info" });
+    } catch {
+      toast("Download failed", { description: "The browser refused every save route.", tone: "error" });
     }
   };
 
   /** One click — every plate in the contact sheet, zipped and delivered. */
   const archiveSession = async () => {
     if (packing || !generations.length) return;
-    const bridge = openDownloadBridge(); // synchronous — gesture preserved
+    const session = new DeliverySession(); // synchronous — gesture preserved
+    const hadTab = session.usable;
     setPacking(true);
     setPackStep({ done: 0, total: generations.length });
     toast("Packing the session", {
@@ -188,11 +215,14 @@ export function ResultsPanel() {
           name: `plate-${String(generations.length - i).padStart(2, "0")}-seed-${g.seed}`,
           filter: g.filter,
         })),
-        (done, total) => setPackStep({ done, total })
+        (done, total) => {
+          setPackStep({ done, total });
+          if (hadTab) session.send({ type: "progress", pct: Math.round((done / total) * 90), label: `Packing plate ${done} of ${total}…` });
+        }
       );
 
       if (!result) {
-        if (bridge && !bridge.closed) bridge.close();
+        session.send({ type: "cancel", reason: "No plates could be fetched — the URLs have likely expired." });
         toast("Archive failed", {
           description: "No plates could be fetched — DashScope URLs expire after 24h, so older plates can't be re-downloaded.",
           tone: "error",
@@ -200,8 +230,9 @@ export function ResultsPanel() {
         return;
       }
 
-      // Deliver through the top-level tab — works where in-page saves are stripped.
-      if (deliverToBridge(bridge, result.blob, "zip", result.filename)) {
+      if (hadTab) {
+        session.send({ type: "deliver", kind: "zip", name: result.filename, blob: result.blob });
+        setTimeout(() => session.close(), 20_000);
         toast("Archive delivered", {
           description: `${result.saved} plate${result.saved === 1 ? "" : "s"} zipped — the delivery tab is saving it now.`,
           tone: "success",
@@ -218,6 +249,7 @@ export function ResultsPanel() {
       });
     } catch (err) {
       console.warn("[EditorialAI] Archive failed", err);
+      session.send({ type: "cancel", reason: err instanceof Error ? err.message : "Something went wrong while zipping." });
       toast("Archive failed", {
         description: err instanceof Error ? err.message : "Something went wrong while zipping the session.",
         tone: "error",
@@ -231,8 +263,10 @@ export function ResultsPanel() {
   /** Save from the ready-bar — the blob is already in memory, so this is instant. */
   const saveZipNow = () => {
     if (!archive) return;
-    const bridge = openDownloadBridge();
-    if (deliverToBridge(bridge, archive.blob, "zip", archive.filename)) {
+    const session = new DeliverySession();
+    if (session.usable) {
+      session.send({ type: "deliver", kind: "zip", name: archive.filename, blob: archive.blob });
+      setTimeout(() => session.close(), 20_000);
       toast("Archive delivered", {
         description: `${archive.saved} plate${archive.saved === 1 ? "" : "s"} — check the delivery tab.`,
         tone: "success",
@@ -240,23 +274,14 @@ export function ResultsPanel() {
       setArchive(null);
       return;
     }
-    // No popups allowed here — fall back to a gesture-fresh anchor click.
-    try {
-      const href = URL.createObjectURL(archive.blob);
-      const a = document.createElement("a");
-      a.href = href;
-      a.download = archive.filename;
-      a.rel = "noopener";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+    // No popups allowed — fall back to a gesture-fresh anchor click.
+    if (triggerDownload(archive.blob, archive.filename)) {
       toast("Archive download started", {
         description: `${archive.saved} plate${archive.saved === 1 ? "" : "s"} — check your downloads folder.`,
         tone: "success",
       });
       setArchive(null);
-      setTimeout(() => URL.revokeObjectURL(href), 60_000);
-    } catch {
+    } else {
       toast("Save failed", { description: "The browser refused the download entirely.", tone: "error" });
     }
   };

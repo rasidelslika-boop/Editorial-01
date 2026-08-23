@@ -153,110 +153,101 @@ export async function fetchBlob(url: string): Promise<Blob | null> {
 }
 
 /* ------------------------------ Delivery tab --------------------------------- */
-/*  Embedded preview iframes routinely strip programmatic downloads — anchor     */
-/*  clicks and picker handles die silently once the fetch completes. A real     */
-/*  top-level tab has none of those restrictions: the button opens the tab      */
-/*  synchronously inside the click gesture, the bytes stream in, and the tab    */
-/*  (being top-level) saves the file to Downloads with a manual fallback.       */
+/*  Embedded preview iframes strip programmatic downloads — and even `about:    */
+/*  blank` / `data:` popup tabs inherit that restriction (opaque origins).      */
+/*  The one context that is never restricted is a genuine top-level page on     */
+/*  the app's own origin. So: the click opens the app itself at `#delivery`     */
+/*  (synchronously, gesture-safe), and the bytes are piped over a               */
+/*  BroadcastChannel. The delivery page — a real secure-context tab — saves     */
+/*  to Downloads, with copy-to-clipboard and right-click fallbacks that work    */
+/*  absolutely anywhere.                                                        */
 
-const BRIDGE_PLACEHOLDER =
-  "<!doctype html><meta charset='utf-8'><title>EditorialAI · Delivery</title>" +
-  "<style>html,body{height:100%}body{margin:0;display:grid;place-items:center;background:#121114;color:#efedea;" +
-  "font-family:Georgia,'Times New Roman',serif;text-align:center;padding:24px}" +
-  ".k{font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:#c6a465;font-family:ui-monospace,Menlo,monospace}" +
-  "h1{font-style:italic;font-weight:500;font-size:30px;margin:14px 0 6px}" +
-  "p{color:#8b8781;font-size:13px;line-height:1.6;max-width:340px}" +
-  ".bar{width:180px;height:2px;background:#2b282e;margin:18px auto 0;overflow:hidden}" +
-  ".bar i{display:block;height:100%;width:40%;background:#c6a465;animation:slide 1.3s ease-in-out infinite}" +
-  "@keyframes slide{0%{transform:translateX(-110%)}100%{transform:translateX(300%)}}</style>" +
-  "<div><p class='k'>EditorialAI · Darkroom delivery</p>" +
-  "<h1>Preparing your download&hellip;</h1>" +
-  "<p>Fetching the plate bytes. This tab saves the file straight to your Downloads folder.</p>" +
-  "<div class='bar'><i></i></div></div>";
+export const DELIVERY_HASH = "#delivery";
+const DELIVERY_CHANNEL = "editorial-ai:delivery";
 
-/**
- * Open the delivery tab. MUST be called synchronously inside the click
- * handler so the popup isn't blocked. Returns null when popups are refused.
- */
-export function openDownloadBridge(): Window | null {
+export type DeliveryMessage =
+  | { type: "ready" }
+  | { type: "deliver"; kind: "image" | "zip"; name: string; blob: Blob }
+  | { type: "progress"; pct: number; label: string }
+  | { type: "cancel"; reason: string };
+
+function deliveryHref(): string {
   try {
-    const w = window.open("", "_blank", "width=480,height=640");
-    if (!w) return null;
-    w.document.open();
-    w.document.write(BRIDGE_PLACEHOLDER);
-    w.document.close();
-    return w;
+    const u = new URL(window.location.href);
+    u.hash = DELIVERY_HASH;
+    return u.toString();
   } catch {
-    return null;
+    return window.location.href + DELIVERY_HASH;
   }
 }
 
-function safeName(name: string): string {
-  return name.replace(/[^\w.-]+/g, "_");
-}
-
-/** Write the finished save page into the delivery tab and kick the download. */
-export function deliverToBridge(w: Window | null, blob: Blob, kind: "image" | "zip", filename: string): boolean {
-  if (!w || w.closed) return false;
-  try {
-    const href = URL.createObjectURL(blob); // parent blob URL — same-origin tab can use it
-    const name = safeName(filename);
-    const isImg = kind === "image";
-    const kb = Math.max(1, Math.round(blob.size / 1024));
-    const html =
-      "<!doctype html><meta charset='utf-8'><title>Save · " + name + "</title>" +
-      "<style>body{margin:0;background:#121114;color:#efedea;font-family:Georgia,'Times New Roman',serif;" +
-      "display:flex;justify-content:center;padding:32px 16px}" +
-      "main{max-width:520px;width:100%}" +
-      ".k{font-size:11px;letter-spacing:.3em;text-transform:uppercase;color:#c6a465;font-family:ui-monospace,Menlo,monospace}" +
-      "h1{font-style:italic;font-weight:500;font-size:28px;margin:12px 0 2px;word-break:break-all}" +
-      ".meta{color:#8b8781;font-size:12px;margin:0 0 18px;font-family:ui-monospace,Menlo,monospace;letter-spacing:.06em}" +
-      "img{width:100%;border:1px solid #3a3733;display:block;margin-bottom:18px;background:#1b181e}" +
-      ".btn{display:block;text-align:center;background:#f1f0ec;color:#121114;text-decoration:none;padding:14px 0;" +
-      "font-family:ui-monospace,Menlo,monospace;font-size:12px;letter-spacing:.2em;text-transform:uppercase;" +
-      "transition:background .15s}.btn:hover{background:#c6a465}" +
-      ".hint{color:#8b8781;font-size:12.5px;line-height:1.65;margin-top:16px}</style>" +
-      "<main><p class='k'>EditorialAI · Delivery</p>" +
-      "<h1>" + name + "</h1>" +
-      "<p class='meta'>" + (isImg ? "image" : "zip archive") + " · " + kb + " KB</p>" +
-      (isImg ? "<img src='" + href + "' alt='Editorial plate'/>" : "") +
-      "<a id='dl' class='btn' href='" + href + "' download='" + name + "'>Save to Downloads</a>" +
-      "<p class='hint'>Your download starts automatically. If it doesn&rsquo;t, click the button above" +
-      (isImg ? " — or right-click the image and choose &ldquo;Save image as&hellip;&rdquo;." : ".") +
-      "</p></main>" +
-      "<script>setTimeout(function(){var a=document.getElementById('dl');if(a)a.click();},500);</scr" + "ipt>";
-    w.document.open();
-    w.document.write(html);
-    w.document.close();
-    setTimeout(() => URL.revokeObjectURL(href), 10 * 60_000);
-    return true;
-  } catch {
-    return false;
-  }
+export function isDeliveryRoute(): boolean {
+  return typeof window !== "undefined" && window.location.hash === DELIVERY_HASH;
 }
 
 /**
- * Byte routes all failed — show the original full-size in the delivery tab
- * (top-level navigation never needs CORS), so it can be saved by hand.
+ * A one-shot session: open the delivery tab (must be called synchronously
+ * inside the click handler) and queue messages until the page reports ready.
  */
-export function navigateBridge(w: Window | null, url: string): boolean {
-  if (!w || w.closed) return false;
-  try {
-    w.document.open();
-    w.document.write(
-      "<!doctype html><meta charset='utf-8'><title>EditorialAI · Full-size plate</title>" +
-        "<style>body{margin:0;background:#121114;color:#efedea;font-family:Georgia,serif;text-align:center;padding:48px 20px}" +
-        "h1{font-style:italic;font-weight:500;font-size:28px}p{color:#8b8781;line-height:1.6;max-width:420px;margin:10px auto}</style>" +
-        "<h1>Opening the full-size plate&hellip;</h1>" +
-        "<p>A direct save wasn&rsquo;t possible, so the original image opens in this tab. Right-click it and choose &ldquo;Save image as&hellip;&rdquo;.</p>"
-    );
-    w.document.close();
-    setTimeout(() => {
-      if (!w.closed) w.location.href = url;
-    }, 1600);
-    return true;
-  } catch {
-    return false;
+export class DeliverySession {
+  readonly tab: Window | null;
+  private channel: BroadcastChannel | null = null;
+  private ready = false;
+  private queue: DeliveryMessage[] = [];
+
+  constructor() {
+    this.tab = this.openTab();
+    if (this.tab && typeof BroadcastChannel !== "undefined") {
+      this.channel = new BroadcastChannel(DELIVERY_CHANNEL);
+      this.channel.onmessage = (e: MessageEvent) => {
+        if ((e.data as DeliveryMessage)?.type === "ready") {
+          this.ready = true;
+          const pending = this.queue;
+          this.queue = [];
+          for (const m of pending) this.channel?.postMessage(m);
+        }
+      };
+    }
+  }
+
+  private openTab(): Window | null {
+    try {
+      return window.open(deliveryHref(), "_blank", "width=520,height=720");
+    } catch {
+      return null;
+    }
+  }
+
+  get usable(): boolean {
+    return Boolean(this.tab && !this.tab.closed);
+  }
+
+  send(msg: DeliveryMessage): void {
+    if (!this.channel) return;
+    if (this.ready) this.channel.postMessage(msg);
+    else this.queue.push(msg);
+  }
+
+  /** Fire-and-forget convenience: open, deliver one payload, tidy up. */
+  static async deliver(payload: Extract<DeliveryMessage, { type: "deliver" }>): Promise<DeliverySession | null> {
+    const s = new DeliverySession();
+    if (!s.usable) {
+      s.close();
+      return null;
+    }
+    s.send(payload);
+    // Keep the channel alive long enough for the handshake, then retire it.
+    setTimeout(() => s.close(), 20_000);
+    return s;
+  }
+
+  close(): void {
+    try {
+      this.channel?.close();
+    } catch {
+      /* noop */
+    }
+    this.channel = null;
   }
 }
 
@@ -301,59 +292,14 @@ function triggerDownload(blob: Blob, filename: string): boolean {
   }
 }
 
-function extFor(blob: Blob): string {
+export function extFor(blob: Blob): string {
   if (blob.type.includes("png")) return "png";
   if (blob.type.includes("webp")) return "webp";
   if (blob.type.includes("gif")) return "gif";
   return "jpg";
 }
 
-export type DownloadStatus = "saved" | "opened" | "failed";
-
-/**
- * Save a plate to the Downloads folder.
- * With a delivery tab (bridge) open, the file is saved from that top-level
- * context — immune to iframe download stripping. Without one: anchor of the
- * graded blob → blob in a tab → raw URL.
- */
-export async function downloadImage(
-  url: string,
-  filename: string,
-  filter?: string,
-  bridge?: Window | null
-): Promise<DownloadStatus> {
-  const blob = await fetchBlob(url);
-  if (blob) {
-    const graded = await applyGrade(blob, filter);
-    if (bridge) {
-      return deliverToBridge(bridge, graded, "image", `${filename}.${extFor(graded)}`) ? "saved" : "failed";
-    }
-    if (triggerDownload(graded, `${filename}.${extFor(graded)}`)) return "saved";
-    try {
-      const href = URL.createObjectURL(graded);
-      window.open(href, "_blank", "noopener");
-      setTimeout(() => URL.revokeObjectURL(href), 60_000);
-      return "opened";
-    } catch {
-      /* fall through */
-    }
-  }
-  // Byte routes failed — the bridge can still show the original full-size.
-  if (bridge) return navigateBridge(bridge, url) ? "opened" : "failed";
-  try {
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${filename}.jpg`;
-    a.target = "_blank";
-    a.rel = "noopener";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    return "opened";
-  } catch {
-    return "failed";
-  }
-}
+export { triggerDownload };
 
 /**
  * Pollinations plates are cache-keyed by URL — the same prompt + seed at a
