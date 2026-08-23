@@ -1,6 +1,6 @@
 import type { EngineId } from "../../types";
 import { mockProvider, type ImageProvider } from "./mock";
-import { bflProvider, customProvider, openaiProvider, qwenProvider } from "./providers";
+import { bflProvider, customProvider, hasDashscopeKey, openaiProvider, qwenProvider } from "./providers";
 
 export type { ImageProvider, ProviderImage, GenerateRequest, ProgressFn } from "./mock";
 
@@ -22,14 +22,14 @@ export function resolveProvider(engine: EngineId): ImageProvider {
     case "qwen-image":
     case "wanx-turbo":
     case "wanx-plus":
-      return env.VITE_DASHSCOPE_API_KEY ? qwenProvider(engine) : mockProvider;
+      return hasDashscopeKey() ? qwenProvider(engine) : mockProvider;
     case "dalle3":
       return env.VITE_OPENAI_API_KEY ? openaiProvider : mockProvider;
     case "flux-pro":
     case "flux-dev":
     case "sd3":
       if (env.VITE_BFL_API_KEY) return bflProvider(engine);
-      if (env.VITE_DASHSCOPE_API_KEY) return qwenProvider(engine);
+      if (hasDashscopeKey()) return qwenProvider(engine);
       return mockProvider;
     case "custom":
       return env.VITE_CUSTOM_ENDPOINT ? customProvider : mockProvider;

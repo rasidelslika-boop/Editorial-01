@@ -99,8 +99,9 @@ export function useGenerate() {
         if (settings.lockSeed && !opts.seed) useStudioStore.getState().patchForm({ seed });
 
         if (images.some((i) => i.fallback)) {
-          toast("Live engine unreachable", {
-            description: "Served a darkroom stand-in plate. Check your connection and reshoot.",
+          toast("Rendered by the free studio engine", {
+            description:
+              "The DashScope call was blocked by the browser (CORS) or unreachable. Deploy the relay worker from the README and set VITE_DASHSCOPE_RELAY to shoot with your key.",
             tone: "info",
           });
         } else {

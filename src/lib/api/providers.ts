@@ -168,6 +168,36 @@ function dashScopeSize(family: DashScopeFamily, ratio: string, hq: boolean): str
   return `${round(width)}*${round(height)}`;
 }
 
+/**
+ * Baked-in DashScope (Alibaba Cloud Model Studio) key so the studio works
+ * out of the box. `VITE_DASHSCOPE_API_KEY` in `.env.local` takes precedence.
+ *
+ * ⚠ Keys baked into a client bundle are publicly readable. Treat this one as
+ *   disposable — for long-lived keys, deploy the relay worker (see README)
+ *   and keep credentials server-side.
+ */
+const BAKED_DASHSCOPE_KEY =
+  "sk-ws-H.DMYPHYD.OfEJ.MEUCIBtqBWReDnRKM1bGzTuTPqH7xJBXLt2Rrn6DDKLvuV-rAiEA4Y2EUAFBEaTba5IQp9ojgHeFxCAHIP9q3S45r-_RCcM";
+
+export function dashscopeKey(): string {
+  return env.VITE_DASHSCOPE_API_KEY || BAKED_DASHSCOPE_KEY;
+}
+
+export function hasDashscopeKey(): boolean {
+  return dashscopeKey().length > 0;
+}
+
+/**
+ * Endpoint base. DashScope does not send browser CORS headers, so direct
+ * client calls are usually blocked — point `VITE_DASHSCOPE_RELAY` at the
+ * relay worker from `/worker` (README) to route around that.
+ */
+function dashscopeBase(): string {
+  const relay = env.VITE_DASHSCOPE_RELAY;
+  if (relay) return relay.replace(/\/+$/, "");
+  return (env.VITE_DASHSCOPE_BASE_URL ?? "https://dashscope-intl.aliyuncs.com/compatible-mode/v1").replace(/\/+$/, "");
+}
+
 export function qwenProvider(engine: string): ImageProvider {
   const spec = DASHSCOPE_MODELS[engine] ?? DASHSCOPE_MODELS["wanx-turbo"];
   return {
@@ -175,9 +205,8 @@ export function qwenProvider(engine: string): ImageProvider {
     label: spec.model,
 
     async generate(req, onProgress) {
-      const key = env.VITE_DASHSCOPE_API_KEY;
-      if (!key) throw new Error("VITE_DASHSCOPE_API_KEY is not set");
-      const base = (env.VITE_DASHSCOPE_BASE_URL ?? "https://dashscope-intl.aliyuncs.com/compatible-mode/v1").replace(/\/$/, "");
+      const key = dashscopeKey();
+      const base = dashscopeBase();
 
       // Upscaling on Wanx Turbo promotes to the Plus model for a true quality lift.
       const model =

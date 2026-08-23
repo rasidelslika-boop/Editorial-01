@@ -60,12 +60,14 @@ Create a `.env.local` in the project root:
 
 ```bash
 # Qwen platform — DashScope / Alibaba Cloud Model Studio (Qwen-Image, Wanx 2.1,
-# plus Flux and SD 3.5 through the same key)
+# plus Flux and SD 3.5 through the same key).
+# NOTE: a key is already baked into src/lib/api/providers.ts — this env var overrides it.
 VITE_DASHSCOPE_API_KEY=sk-...
 # Optional — defaults to the international endpoint.
 # China mainland: https://dashscope.aliyuncs.com/compatible-mode/v1
-# Browser CORS proxy (recommended, see below): https://your-worker.example.com/compatible-mode/v1
 VITE_DASHSCOPE_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+# Browser CORS relay (recommended — see "Browser CORS" below)
+VITE_DASHSCOPE_RELAY=https://editorial-ai-dashscope.<you>.workers.dev
 
 # DALL·E 3 (OpenAI)
 VITE_OPENAI_API_KEY=sk-...
@@ -92,21 +94,30 @@ through DashScope's OpenAI-compatible endpoint:
 | Flux Pro / Dev, SD 3.5    | `flux-merged` / `flux-dev` / `stable-diffusion-3.5-large` | same key |
 
 **Browser CORS:** DashScope does not send CORS headers, so a browser calling it
-directly is blocked. Two options:
+directly is blocked — the studio detects this and automatically re-renders the
+plate with the free studio engine (you'll see an info toast). To shoot with your
+DashScope key:
 
-1. Run a tiny proxy and point `VITE_DASHSCOPE_BASE_URL` at it. Cloudflare Worker:
+1. Deploy the ready-made relay in [`worker/dashscope-proxy.js`](worker/dashscope-proxy.js):
 
-```js
-export default {
-  async fetch(req) {
-    const upstream = "https://dashscope-intl.aliyuncs.com";
-    return fetch(new URL(req.url.replace(/^https?:\/\/[^/]+/, upstream)), req);
-  },
-};
+```bash
+npm i -g wrangler && wrangler login
+wrangler deploy worker/dashscope-proxy.js --name editorial-ai-dashscope
 ```
+
+then set `VITE_DASHSCOPE_RELAY=https://editorial-ai-dashscope.<you>.workers.dev`
+in `.env.local` and rebuild.
 
 2. Generate server-side (the provider is a plain `fetch` — lift it into an API
    route) so the key never ships to the browser. This is the recommended setup
+
+**Keep in mind:**
+
+- The baked-in key lives in the client bundle and is publicly readable — rotate
+  it in the Model Studio console after testing, or move it into the relay as a
+  Worker secret (`wrangler secret put DASHSCOPE_API_KEY`).
+- DashScope image URLs expire after ~24 hours, so download plates you want to
+  keep (PNG / high-res buttons in the lightbox).
    for production.
 
 If the direct call fails, the studio automatically falls back to the free
