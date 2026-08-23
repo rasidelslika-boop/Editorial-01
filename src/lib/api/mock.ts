@@ -24,6 +24,7 @@ export interface GenerateRequest {
   seed: number;
   count: number;
   ratio: string;
+  engine?: string;
   quality?: "standard" | "hq";
 }
 
@@ -37,6 +38,7 @@ export interface ImageProvider {
 }
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+const env = import.meta.env as Record<string, string | undefined>;
 
 /* ---------------------------- Offline plate pool ---------------------------- */
 
@@ -94,6 +96,7 @@ function fallbackPick(prompt: string, seed: number, index: number) {
 /* ------------------------------ Live engine ------------------------------ */
 
 const LIVE_BASE = "https://image.pollinations.ai/prompt/";
+const POLLINATIONS_TOKEN = env.VITE_POLLINATIONS_TOKEN;
 
 export function liveDimensions(ratio: string, maxSide: number) {
   const [w, h] = ratio.split(":").map(Number);
@@ -112,36 +115,74 @@ export function liveDimensions(ratio: string, maxSide: number) {
   return { width: round(width), height: round(height) };
 }
 
-export function liveUrl(prompt: string, seed: number, width: number, height: number) {
-  const p = encodeURIComponent(prompt.slice(0, 1600));
-  return `${LIVE_BASE}${p}?model=flux&seed=${seed}&width=${width}&height=${height}&nologo=true&private=true&safe=true&referrer=editorial-ai`;
+/**
+ * The anonymous Pollinations tier currently serves only `sana`
+ * (flux/turbo moved behind registered tokens). With a token in
+ * VITE_POLLINATIONS_TOKEN the engines get their proper models.
+ */
+function pollinationsModel(engine?: string): string {
+  if (POLLINATIONS_TOKEN) {
+    return engine === "sd3" ? "turbo" : "flux";
+  }
+  return "sana";
 }
 
-/** Fetch waits for the remote engine to actually finish rendering. One retry on throttle/5xx. */
-async function fetchLive(url: string): Promise<boolean> {
-  for (let attempt = 0; attempt < 2; attempt++) {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 75_000);
-    try {
-      const res = await fetch(url, { signal: ctrl.signal });
-      if (res.ok) return true;
-      if ((res.status === 429 || res.status >= 500) && attempt === 0) {
-        // Anonymous tier throttles to 1 request / 15s — back off, then retry.
-        await sleep(16_000);
-        continue;
+export function liveUrl(prompt: string, seed: number, width: number, height: number, model: string) {
+  const params = new URLSearchParams({
+    model,
+    seed: String(seed),
+    width: String(width),
+    height: String(height),
+    safe: "true",
+    referrer: "editorial-ai",
+  });
+  // nologo/private are account-gated — only send them with a token.
+  if (POLLINATIONS_TOKEN) {
+    params.set("token", POLLINATIONS_TOKEN);
+    params.set("nologo", "true");
+    params.set("private", "true");
+  }
+  return `${LIVE_BASE}${encodeURIComponent(prompt.slice(0, 1600))}?${params.toString()}`;
+}
+
+/**
+ * Fetch the plate and *verify* it. Pollinations can answer 200 with an
+ * error artwork, so sniff the bytes: it must be an image type and a
+ * photograph-sized payload, not a tiny rendered error card.
+ */
+async function renderLive(url: string): Promise<void> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 90_000);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    if (!res.ok) throw new Error(`engine responded ${res.status}`);
+    const blob = await res.blob();
+    if (!blob.type.startsWith("image/")) throw new Error("engine returned a non-image payload");
+    if (blob.size < 30_000) throw new Error("engine returned an error plate");
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/** Try the engine's model first, then `sana`, with throttle back-off between attempts. */
+async function developPlate(prompt: string, seed: number, width: number, height: number, engine?: string): Promise<string> {
+  const models = [pollinationsModel(engine)];
+  if (!models.includes("sana")) models.push("sana");
+
+  for (let m = 0; m < models.length; m++) {
+    const url = liveUrl(prompt, seed, width, height, models[m]);
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        await renderLive(url);
+        // Return the CDN URL itself — Pollinations caches by URL, so the
+        // same plate re-loads from the archive after a page refresh.
+        return url;
+      } catch {
+        if (attempt === 0) await sleep(m === 0 ? 16_000 : 6_000);
       }
-      return false;
-    } catch {
-      if (attempt === 0) {
-        await sleep(4_000);
-        continue;
-      }
-      return false;
-    } finally {
-      clearTimeout(timer);
     }
   }
-  return false;
+  throw new Error("live render failed");
 }
 
 export const studioProvider: ImageProvider = {
@@ -161,18 +202,17 @@ export const studioProvider: ImageProvider = {
         16 + (i / req.count) * 48
       );
 
-      const url = liveUrl(req.prompt, seed, width, height);
-      const ok = await fetchLive(url);
-
-      if (ok) {
+      try {
+        const url = await developPlate(req.prompt, seed, width, height, req.engine);
         images.push({ url, seed });
-      } else {
+      } catch {
         const { plate, finish } = fallbackPick(req.prompt, seed, i);
         images.push({ url: plate.url, seed, filter: finish.filter, focus: plate.focus, fallback: true });
       }
 
-      // Space out plates so batches stay inside the anonymous rate limit.
-      if (i < req.count - 1) await sleep(1_400);
+      // Keep batches friendly to the anonymous rate limit; the retry
+      // logic above absorbs any remaining 429s.
+      if (i < req.count - 1) await sleep(3_000);
     }
 
     onProgress?.("Printing", 100);

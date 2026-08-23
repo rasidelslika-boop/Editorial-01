@@ -65,6 +65,7 @@ export function useGenerate() {
             seed,
             count,
             ratio: settings.ratio,
+            engine: settings.engine,
             quality: opts.quality,
           },
           (stage, pct) => {

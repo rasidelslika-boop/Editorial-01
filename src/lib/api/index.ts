@@ -33,11 +33,11 @@ export function providerNotice(engine: EngineId): string | null {
   if (!p.mock) return null; // routed to a direct API via env keys
   switch (engine) {
     case "dalle3":
-      return "Rendering live via the free studio engine — add VITE_OPENAI_API_KEY to call DALL·E 3 directly.";
+      return "Rendering live via the free studio engine (Pollinations · sana) — add VITE_OPENAI_API_KEY for DALL·E 3, or VITE_POLLINATIONS_TOKEN for Flux.";
     case "flux-pro":
     case "flux-dev":
     case "sd3":
-      return "Rendering live via the free studio engine — add VITE_BFL_API_KEY to call the Flux API directly.";
+      return "Rendering live via the free studio engine — the anonymous tier serves Pollinations' sana model; add VITE_POLLINATIONS_TOKEN to unlock flux/turbo, or VITE_BFL_API_KEY for the direct Flux API.";
     case "custom":
       return "Rendering live via the free studio engine — set VITE_CUSTOM_ENDPOINT to route to your own API.";
     case "mj6":

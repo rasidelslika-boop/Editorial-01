@@ -100,7 +100,7 @@ export const useStudioStore = create<StudioState>()(
       clearArchive: () => set({ generations: [], activeId: null, baseId: null }),
     }),
     {
-      name: "editorial-ai:v1",
+      name: "editorial-ai:v3",
       // Bumped on engine changes — old persisted archives (stale plates) are
       // discarded so the studio always boots from a clean darkroom.
       version: 2,
