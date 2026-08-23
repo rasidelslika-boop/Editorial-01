@@ -61,9 +61,9 @@ Create a `.env.local` in the project root:
 ```bash
 # Qwen platform — DashScope / Alibaba Cloud Model Studio (Qwen-Image, Wanx 2.1,
 # plus Flux and SD 3.5 through the same key).
-# NOTE: a key is already baked into src/lib/api/providers.ts — this env var overrides it.
+# The key lives only in .env.local (git-ignored) — nothing is hardcoded in source.
 VITE_DASHSCOPE_API_KEY=sk-...
-# Optional — defaults to the baked ap-southeast-1 MaaS workspace gateway.
+# Optional — defaults to the ap-southeast-1 MaaS workspace gateway.
 # Other accounts — intl: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
 # China mainland: https://dashscope.aliyuncs.com/compatible-mode/v1
 VITE_DASHSCOPE_BASE_URL=https://ws-ou063af90w6dlklj.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1
@@ -118,9 +118,10 @@ browser.
 
 **Keep in mind:**
 
-- The baked-in key lives in the client bundle and is publicly readable — rotate
-  it in the Model Studio console after testing, or move it into the relay as a
-  Worker secret (`wrangler secret put DASHSCOPE_API_KEY`).
+- The key is read from `VITE_DASHSCOPE_API_KEY` in `.env.local` (git-ignored).
+  Note that any `VITE_` variable is still inlined into the client bundle at
+  build time — for long-lived keys, keep the credential server-side in the
+  relay worker (`wrangler secret put DASHSCOPE_API_KEY`).
 - DashScope image URLs expire after ~24 hours, so download plates you want to
   keep (PNG / high-res buttons in the lightbox).
 - Failed generations are never billed; new accounts get free image quota.

@@ -15,18 +15,15 @@ const env = import.meta.env as Record<string, string | undefined>;
 /* ------------------------------------------------------------------ */
 
 /**
- * Baked-in DashScope key so the studio works out of the box.
- * `VITE_DASHSCOPE_API_KEY` in `.env.local` takes precedence.
+ * The DashScope key comes exclusively from the environment —
+ * `VITE_DASHSCOPE_API_KEY` in `.env.local` (never committed to git).
  *
- * ⚠ Keys baked into a client bundle are publicly readable. Treat this one as
- *   disposable — for long-lived keys, deploy the relay worker (see README)
- *   and keep credentials server-side.
+ * ⚠ Any VITE_ variable is inlined into the client bundle at build time, so
+ *   for long-lived keys deploy the relay worker (see README) and keep the
+ *   credential server-side.
  */
-const BAKED_DASHSCOPE_KEY =
-  "sk-ws-H.DMYPHYD.OfEJ.MEUCIBtqBWReDnRKM1bGzTuTPqH7xJBXLt2Rrn6DDKLvuV-rAiEA4Y2EUAFBEaTba5IQp9ojgHeFxCAHIP9q3S45r-_RCcM";
-
 export function dashscopeKey(): string {
-  return env.VITE_DASHSCOPE_API_KEY || BAKED_DASHSCOPE_KEY;
+  return (env.VITE_DASHSCOPE_API_KEY ?? "").trim();
 }
 
 export function hasDashscopeKey(): boolean {
