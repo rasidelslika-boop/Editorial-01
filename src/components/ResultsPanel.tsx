@@ -26,7 +26,16 @@ import { useStudioStore } from "../stores/editorial";
 import { useUIStore } from "../stores/ui";
 import { promptSummary } from "../lib/promptBuilder";
 import { SCENE_STARTERS } from "../lib/presets";
-import { buildZipArchive, cn, copyText, downloadImage, highResUrl, type ArchiveResult } from "../lib/utils";
+import {
+  buildZipArchive,
+  cn,
+  copyText,
+  deliverToBridge,
+  downloadImage,
+  highResUrl,
+  openDownloadBridge,
+  type ArchiveResult,
+} from "../lib/utils";
 import type { Generation } from "../types";
 import { Button } from "./ui";
 
@@ -135,18 +144,26 @@ export function ResultsPanel() {
     toast("Contact sheet cleared", { description: "Every plate from this session has been discarded.", tone: "info" });
   };
 
-  /** Save the active plate — the grade you see on screen is baked into the file. */
+  /**
+   * Save the active plate. Opens a top-level delivery tab synchronously
+   * inside the click gesture — embedded preview iframes strip programmatic
+   * downloads, but a real tab saves to the Downloads folder every time.
+   */
   const savePlate = async (kind: "png" | "hq") => {
     if (!gen) return;
     const target = kind === "hq" ? highResUrl(gen.url) ?? gen.url : gen.url;
     const name = `editorial-plate-${gen.seed}${kind === "hq" ? "-hires" : ""}`;
-    toast(kind === "hq" ? "Preparing high-res download" : "Preparing download", { tone: "info" });
-    const status = await downloadImage(target, name, gen.filter);
+    const bridge = openDownloadBridge(); // synchronous — gesture preserved
+    toast(kind === "hq" ? "Preparing high-res plate" : "Preparing plate", {
+      description: bridge ? "A delivery tab opened — the file saves from there." : undefined,
+      tone: "info",
+    });
+    const status = await downloadImage(target, name, gen.filter, bridge);
     if (status === "saved") {
-      toast("Plate saved", { description: `${name} is in your downloads.`, tone: "success" });
+      toast("Plate delivered", { description: "Check the delivery tab — your save is on its way to Downloads.", tone: "success" });
     } else if (status === "opened") {
-      toast("Opened in a new tab", {
-        description: "Your browser blocked a direct save — save the image from the tab instead.",
+      toast("Full-size plate opened", {
+        description: "The delivery tab shows the original — right-click it → Save image as…",
         tone: "info",
       });
     } else {
@@ -154,9 +171,10 @@ export function ResultsPanel() {
     }
   };
 
-  /** One click — every plate in the contact sheet, zipped. */
+  /** One click — every plate in the contact sheet, zipped and delivered. */
   const archiveSession = async () => {
     if (packing || !generations.length) return;
+    const bridge = openDownloadBridge(); // synchronous — gesture preserved
     setPacking(true);
     setPackStep({ done: 0, total: generations.length });
     toast("Packing the session", {
@@ -174,6 +192,7 @@ export function ResultsPanel() {
       );
 
       if (!result) {
+        if (bridge && !bridge.closed) bridge.close();
         toast("Archive failed", {
           description: "No plates could be fetched — DashScope URLs expire after 24h, so older plates can't be re-downloaded.",
           tone: "error",
@@ -181,9 +200,16 @@ export function ResultsPanel() {
         return;
       }
 
-      // Long async work means the original click gesture is gone, so a direct
-      // auto-save would be blocked — surface the ready-bar and let the user's
-      // fresh "Save ZIP" click do the (gesture-safe) download.
+      // Deliver through the top-level tab — works where in-page saves are stripped.
+      if (deliverToBridge(bridge, result.blob, "zip", result.filename)) {
+        toast("Archive delivered", {
+          description: `${result.saved} plate${result.saved === 1 ? "" : "s"} zipped — the delivery tab is saving it now.`,
+          tone: "success",
+        });
+        return;
+      }
+
+      // Popup was blocked — the ready-bar gives a gesture-fresh Save ZIP button.
       setArchive(result);
       const skipped = result.failed ? ` · ${result.failed} skipped (expired)` : "";
       toast("Archive ready", {
@@ -202,9 +228,19 @@ export function ResultsPanel() {
     }
   };
 
-  /** Save from the ready-bar — a fresh click gesture makes the anchor download stick. */
+  /** Save from the ready-bar — the blob is already in memory, so this is instant. */
   const saveZipNow = () => {
     if (!archive) return;
+    const bridge = openDownloadBridge();
+    if (deliverToBridge(bridge, archive.blob, "zip", archive.filename)) {
+      toast("Archive delivered", {
+        description: `${archive.saved} plate${archive.saved === 1 ? "" : "s"} — check the delivery tab.`,
+        tone: "success",
+      });
+      setArchive(null);
+      return;
+    }
+    // No popups allowed here — fall back to a gesture-fresh anchor click.
     try {
       const href = URL.createObjectURL(archive.blob);
       const a = document.createElement("a");
