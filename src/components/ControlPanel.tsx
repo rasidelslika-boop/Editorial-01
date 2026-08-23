@@ -35,7 +35,6 @@ import {
   BUST_OPTIONS,
   CLASSIC_LOOKS,
   DISTINCTIVE_DETAILS,
-  drawPoses,
   drawSeriesFrames,
   EYE_COLORS,
   EYE_SHAPES,
@@ -78,7 +77,7 @@ import {
   rollSkinDetail,
 } from "../lib/randomizers";
 import { aiIdentity, aiMuseBlock, aiTrait } from "../lib/aiTraits";
-import { composeSeriesPlate } from "../lib/promptBuilder";
+import { composeScenePlate } from "../lib/promptBuilder";
 import { cn } from "../lib/utils";
 import { Button, Chip, Label, Section, SelectBox, Switch, inputCls, textareaCls } from "./ui";
 import { PromptPreview } from "./PromptPreview";
@@ -739,12 +738,7 @@ function GenerateBar() {
   const seqDirection = useStudioStore((s) => s.seqDirection);
   const setSeqDirection = useStudioStore((s) => s.setSeqDirection);
   const form = useStudioStore((s) => s.form);
-  const generations = useStudioStore((s) => s.generations);
-  const activeId = useStudioStore((s) => s.activeId);
   const toast = useGenerateToast();
-
-  // The plate the Seq shooter starts from — the active plate, else the current form.
-  const activeGen = generations.find((g) => g.id === activeId) ?? generations[0] ?? null;
 
   /**
    * Series — ONE continuous photoshoot: the exact same model, the exact same
@@ -772,25 +766,40 @@ function GenerateBar() {
     void generate({
       settings,
       perPlate: frames.map((f) => ({ pose: f.pose, expression: f.expression, negative: seriesNegative })),
-      compose: (ps, i) => composeSeriesPlate(ps, frames[i]),
+      compose: (ps, i) => composeScenePlate(ps, frames[i]),
       seedStep: 0,
     });
   };
 
-  /** Seq — start from the active plate and step the wardrobe up or down, new pose each plate. */
+  /**
+   * Seq — ONE continuous shoot built on the CURRENT direction: the same model
+   * and the same backdrop on every plate, the same angles-and-framing variety
+   * as Series, while the wardrobe shifts one editorial layer per plate
+   * (remove or add). Never falls back to an old archived plate's settings.
+   */
   const shootSeq = () => {
-    const steps = seqDirection === "remove" ? REMOVE_STEPS : ADD_STEPS;
-    const poses = drawPoses(seqCount, form.pose);
-    const base = activeGen?.settings ?? form;
-    const perPlate = Array.from({ length: seqCount }, (_, i) => ({
-      pose: poses[i],
-      outfit: i === 0 ? base.outfit : steps[(i - 1) % steps.length],
+    const s = useStudioStore.getState();
+    const settings = { ...s.form };
+    const n = s.seqCount;
+    const steps = s.seqDirection === "remove" ? REMOVE_STEPS : ADD_STEPS;
+    const frames = drawSeriesFrames(n);
+    // Plate 0 wears the current outfit; each following plate shifts one layer.
+    const perPlate = frames.map((frame, i) => ({
+      pose: frame.pose,
+      expression: frame.expression,
+      outfit: i === 0 ? settings.outfit : steps[(i - 1) % steps.length],
+      negative: `${(settings.negative ?? "").trim() ? settings.negative.trim() + ", " : ""}grid, collage, multiple photos in one image, split screen, triptych, contact sheet, multiple people`,
     }));
-    toast(`Shooting a ${seqCount}-step ${seqDirection === "remove" ? "remove" : "add"} sequence`, {
-      description: "Wardrobe shifts one editorial layer per plate, poses never repeat.",
+    toast(`Shooting a ${n}-step ${s.seqDirection === "remove" ? "remove" : "add"} sequence`, {
+      description: "Same model, same backdrop — the wardrobe shifts one layer per plate, angles and framing never repeat.",
       tone: "info",
     });
-    void generate({ count: seqCount, settings: base, perPlate });
+    void generate({
+      settings,
+      perPlate,
+      compose: (ps, i) => composeScenePlate(ps, frames[i], { wardrobeShifts: true }),
+      seedStep: 0,
+    });
   };
 
   return (
@@ -895,7 +904,7 @@ function GenerateBar() {
           disabled={generating}
           onClick={shootSeq}
           aria-label={`Generate a ${seqCount}-step ${seqDirection} wardrobe sequence`}
-          title={`Start from the ${activeGen ? "active plate" : "current form"} and ${seqDirection} one layer per plate`}
+          title={`Start from the current direction — same model and backdrop, ${seqDirection} one wardrobe layer per plate`}
           className="h-10 flex-1 uppercase tracking-[0.08em]"
         >
           <Clapperboard className="h-3.5 w-3.5" />
