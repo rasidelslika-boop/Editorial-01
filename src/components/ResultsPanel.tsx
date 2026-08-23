@@ -1,12 +1,14 @@
 import { AnimatePresence, motion } from "framer-motion";
 import {
   Aperture,
+  Archive,
   ArrowDownToLine,
   ArrowUpRight,
   Clapperboard,
   Copy,
   Download,
   ImageDown,
+  Loader2,
   Lock,
   MapPin,
   Move,
@@ -23,7 +25,7 @@ import { useStudioStore } from "../stores/editorial";
 import { useUIStore } from "../stores/ui";
 import { promptSummary } from "../lib/promptBuilder";
 import { SCENE_STARTERS } from "../lib/presets";
-import { cn, copyText, downloadImage } from "../lib/utils";
+import { cn, copyText, downloadImage, downloadZipArchive, highResUrl } from "../lib/utils";
 import type { Generation } from "../types";
 import { Button } from "./ui";
 
@@ -108,6 +110,55 @@ export function ResultsPanel() {
   const toggleCompareId = useUIStore((s) => s.toggleCompareId);
   const compareIds = useUIStore((s) => s.compareIds);
   const [showPrompt, setShowPrompt] = useState(false);
+  const [packing, setPacking] = useState(false);
+
+  /** Save the active plate — the grade you see on screen is baked into the file. */
+  const savePlate = async (kind: "png" | "hq") => {
+    if (!gen) return;
+    const target = kind === "hq" ? highResUrl(gen.url) ?? gen.url : gen.url;
+    const name = `editorial-plate-${gen.seed}${kind === "hq" ? "-hires" : ""}`;
+    toast(kind === "hq" ? "Preparing high-res download" : "Preparing download", { tone: "info" });
+    const status = await downloadImage(target, name, gen.filter);
+    if (status === "saved") {
+      toast("Plate saved", { description: `${name} is in your downloads.`, tone: "success" });
+    } else if (status === "opened") {
+      toast("Opened in a new tab", {
+        description: "Your browser blocked a direct save — save the image from the tab instead.",
+        tone: "info",
+      });
+    } else {
+      toast("Download failed", { description: "The plate couldn't be fetched — it may have expired.", tone: "error" });
+    }
+  };
+
+  /** One click — every plate in the contact sheet, zipped. */
+  const archiveSession = async () => {
+    if (packing || !generations.length) return;
+    setPacking(true);
+    toast("Packing the session", {
+      description: `Archiving ${generations.length} plate${generations.length === 1 ? "" : "s"}…`,
+      tone: "info",
+    });
+    const { saved, failed } = await downloadZipArchive(
+      generations.map((g, i) => ({
+        url: g.url,
+        name: `plate-${String(generations.length - i).padStart(2, "0")}-seed-${g.seed}`,
+        filter: g.filter,
+      }))
+    );
+    setPacking(false);
+    if (saved) {
+      toast("Session archive saved", {
+        description: `${saved} plate${saved === 1 ? "" : "s"} zipped${failed ? ` · ${failed} skipped (expired or unreachable)` : ""}.`,
+        tone: "success",
+      });
+    } else {
+      toast("Archive failed", {
+        description: "No plates could be fetched — DashScope URLs expire after 24h, so older plates can't be re-downloaded.",
+        tone: "error",
+      });
+    }
+  };
 
   const gen = generations.find((g) => g.id === activeId) ?? generations[0] ?? null;
 
@@ -406,18 +457,10 @@ export function ResultsPanel() {
 
               {/* Utility row */}
               <div className="mx-auto mt-4 flex max-w-3xl flex-wrap items-center justify-center gap-2">
-                <Button
-                  variant="dark"
-                  size="sm"
-                  onClick={() => void downloadImage(gen.url, `editorial-plate-${gen.seed}.png`)}
-                >
+                <Button variant="dark" size="sm" onClick={() => void savePlate("png")}>
                   <Download className="h-3.5 w-3.5" /> PNG
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => void downloadImage(gen.url, `editorial-plate-${gen.seed}-hires.png`)}
-                >
+                <Button variant="outline" size="sm" onClick={() => void savePlate("hq")}>
                   <ArrowDownToLine className="h-3.5 w-3.5" /> High-res
                 </Button>
                 <Button
@@ -459,7 +502,26 @@ export function ResultsPanel() {
       {/* Contact sheet */}
       {generations.length > 0 && (
         <div className="border-t border-ink/10 px-5 py-3 dark:border-paper/10 sm:px-7">
-          <p className="mb-2 font-mono text-[10px] uppercase tracking-[0.2em] text-ink/40 dark:text-paper/35">Contact sheet</p>
+          <div className="mb-2 flex items-center justify-between gap-3">
+            <p className="font-mono text-[10px] uppercase tracking-[0.2em] text-ink/40 dark:text-paper/35">
+              Contact sheet · {generations.length} plate{generations.length === 1 ? "" : "s"}
+            </p>
+            <button
+              onClick={() => void archiveSession()}
+              disabled={packing}
+              aria-label="Download every plate in this session as a ZIP archive"
+              className={cn(
+                "group flex h-7 items-center gap-1.5 rounded-sm border px-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.14em] transition-all duration-150",
+                "hover:-translate-y-px disabled:pointer-events-none",
+                packing
+                  ? "border-gilt-500/60 bg-gilt-500/10 text-gilt-600 dark:text-gilt-300"
+                  : "border-ink/20 text-ink/65 hover:border-gilt-500 hover:text-gilt-600 dark:border-paper/20 dark:text-paper/60 dark:hover:border-gilt-400 dark:hover:text-gilt-300"
+              )}
+            >
+              {packing ? <Loader2 className="h-3 w-3 animate-spin" /> : <Archive className="h-3 w-3" />}
+              {packing ? "Packing…" : "Archive ZIP"}
+            </button>
+          </div>
           <div className="no-scrollbar flex gap-2.5 overflow-x-auto pb-1">
             {generations.map((g) => (
               <Thumb
