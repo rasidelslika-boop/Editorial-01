@@ -538,6 +538,128 @@ export const ADD_STEPS = [
   "an avant-garde sculptural couture extension with architectural layers",
 ] as const;
 
+/* ------------------------------- One-click composers ------------------------------- */
+/*  "Masterpiece" and "Analog" build a complete, self-contained brief from scratch    */
+/*  and bypass every form setting. Each press rolls a fresh combination.              */
+
+const MP_MUSES = [
+  "a breathtaking 21-year-old Scandinavian supermodel with luminous porcelain skin, sculpted high cheekbones and piercing ice-blue eyes",
+  "a striking 24-year-old editorial model with golden-bronze skin, a statuesque frame and expressive amber eyes",
+  "an ethereal 22-year-old haute-couture muse with flawless ivory skin, a swan-like neck and delicate arched brows",
+  "a radiant 23-year-old cover model with warm caramel skin, freckles dusting her nose and deep espresso eyes",
+  "an elegant 25-year-old runway icon with alabaster skin, sharp jawline and smouldering dark eyes",
+] as const;
+
+const MP_HAIR = [
+  "hair swept into a sleek high-gloss chignon with wispy face-framing tendrils",
+  "long platinum waves caught mid-motion with a healthy luminous sheen",
+  "a sculpted wet-look bob, immaculately slicked and glass-smooth",
+  "soft romantic curls pinned up loosely with gilded tendrils escaping",
+  "a flawless center-parted curtain of silk-straight dark hair",
+] as const;
+
+const MP_COUTURE = [
+  "an architectural liquid-silver couture gown with dramatic sculpted shoulders",
+  "a bias-cut champagne silk slip gown that pours over every line",
+  "an avant-garde sculptural white gown with origami pleating and a sweeping train",
+  "a jewel-toned emerald velvet gown with a plunging neckline and opera gloves",
+  "a couture black tulle gown layered with hand-sewn crystal beading",
+] as const;
+
+const MP_SETTINGS = [
+  "a minimalist infinity-cove studio suffused with soft directional light",
+  "a gilded Parisian ballroom at golden hour, light spilling through tall windows",
+  "a monumental brutalist atrium with a single dramatic shaft of daylight",
+  "a mirror-still salt flat at dusk beneath a violet-and-amber sky",
+  "a grand marble staircase in a palatial hotel, lit by crystal chandeliers",
+] as const;
+
+const MP_LIGHTING = [
+  "lit with a single soft diffused beauty dish for flawless, dimensional glow",
+  "sculpted by dramatic chiaroscuro from one hard directional source",
+  "bathed in warm golden-hour rim light with gentle falloff into shadow",
+  "wrapped in high-key seamless light, airy and luminous",
+  "lit with cinematic three-point glamour lighting, crisp and refined",
+] as const;
+
+const MP_CAMERAS = [
+  "shot on Phase One IQ4 150MP medium format, 80mm ƒ/2.8, breathtaking resolution",
+  "shot on Hasselblad H6D-100c, 120mm macro, tack-sharp with creamy tonality",
+  "captured on a 100-megapixel medium format digital back, 110mm ƒ/2, 8k detail",
+  "shot on Canon EOS R5 with an 85mm ƒ/1.2L prime, flawless bokeh",
+  "captured on Leica SL2-S with a 75mm Summilux, exquisite micro-contrast",
+] as const;
+
+const MP_REFERENCES = [
+  "in the style of Vogue Italia, art direction by Steven Meisel",
+  "in the style of Harper's Bazaar, timeless high-glamour polish",
+  "in the style of W Magazine, bold contemporary couture editorial",
+  "in the style of Vogue Paris, effortless sophisticated elegance",
+  "in the style of a global luxury campaign, immaculate retouching",
+] as const;
+
+const MP_FINISH = [
+  "ultra-high-definition, immaculate skin detail, refined colour grade, professional fashion photography, 8k",
+  "hyper-detailed, flawless retouching, luxurious tonal range, award-winning editorial quality, 8k",
+  "masterful composition, razor-sharp focus, cinematic depth, museum-grade print quality, 8k",
+] as const;
+
+/** Roll the absolute-best-possible AI fashion photograph — a complete, self-contained brief. */
+export function rollMasterpiecePrompt(): string {
+  return (
+    `Masterpiece fashion editorial photograph of ${pick(MP_MUSES)}, ${pick(MP_HAIR)}, ` +
+    `wearing ${pick(MP_COUTURE)}, ${pick(RANDOM_POSES)}, set in ${pick(MP_SETTINGS)}, ` +
+    `${pick(MP_LIGHTING)}, ${pick(MP_CAMERAS)}, ${pick(MP_REFERENCES)}, ${pick(MP_FINISH)}`
+  );
+}
+
+const AN_CAMERAS = [
+  "shot on a vintage Hasselblad 500C/M loaded with Kodak Portra 400 film",
+  "captured on a classic Leica M6 with Ilford HP5 Plus black-and-white film",
+  "shot on a 1970s Nikon FM2 with Fuji Superia 400, natural grain",
+  "captured on a Rolleiflex twin-lens reflex with Kodak Tri-X 400",
+  "shot on a Polaroid SX-70, instant film with soft organic tones",
+] as const;
+
+const AN_LIGHT = [
+  "lit by a single analog bulb flash, hard and honest with deep shadows",
+  "available window light only, soft and natural, no strobes",
+  "a bare tungsten bulb overhead, warm and unpolished",
+  "overcast daylight, flat and truthful, straight off the negative",
+  "late-afternoon sun through a dusty window, warm and unretouched",
+] as const;
+
+const AN_SUBJECTS = [
+  "a naturally beautiful young woman, bare-faced with minimal makeup and real skin texture",
+  "a fresh-faced model with no retouching, honest skin and unstyled hair",
+  "a girl-next-door muse, natural features, no cosmetics, relaxed and unposed",
+  "a young woman in her own clothes, candid expression, genuine and unguarded",
+] as const;
+
+const AN_SETTINGS = [
+  "a plain white seamless backdrop in a small working studio",
+  "a sunlit kitchen with worn wooden counters",
+  "the back seat of an old car, window light raking across",
+  "a quiet street corner on an overcast afternoon",
+  "a bare apartment with one tall window",
+] as const;
+
+const AN_PROCESS = [
+  "darkroom-processed silver gelatin print with authentic film grain and soft tonal gradation",
+  "hand-printed in the darkroom, gentle contrast, honest blacks and breathing highlights",
+  "developed and scanned straight off the negative, subtle grain, true-to-life colour",
+  "a darkroom print with slight vignette, organic grain and a timeless analogue warmth",
+] as const;
+
+/** Roll the most real-life analog film photograph — simple, natural, unretouched. */
+export function rollAnalogPrompt(): string {
+  return (
+    `Authentic analog fashion photograph of ${pick(AN_SUBJECTS)}, ${pick(RANDOM_POSES)}, ` +
+    `set in ${pick(AN_SETTINGS)}, ${pick(AN_LIGHT)}, ${pick(AN_CAMERAS)}, ${pick(AN_PROCESS)}, ` +
+    `pleasingly natural, simple and sincere, no digital retouching, real-life photography`
+  );
+}
+
 /* -------------------------------- 04 · the pose ------------------------------ */
 
 export const RANDOM_POSES = [

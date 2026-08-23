@@ -1,8 +1,10 @@
-import { Check, Copy, Lock, PenLine, Wand2 } from "lucide-react";
+import { Check, Copy, Film, Lock, PenLine, Sparkles, Wand2 } from "lucide-react";
+import { motion } from "framer-motion";
 import { useEffect, useMemo, useState } from "react";
-import { useStudioStore } from "../stores/editorial";
+import { DEFAULT_FORM, useStudioStore } from "../stores/editorial";
 import { useUIStore } from "../stores/ui";
 import { composePrompt } from "../lib/promptBuilder";
+import { rollAnalogPrompt, rollMasterpiecePrompt } from "../lib/randomizers";
 import { copyText, cn } from "../lib/utils";
 import { Button, Section } from "./ui";
 
@@ -37,6 +39,20 @@ export function PromptPreview() {
     }
   };
 
+  /**
+   * One-click full briefs. Composes a complete, self-contained prompt from
+   * scratch, fully clears every previous direction option, and drops the
+   * result into Free-write mode so it's what gets sent.
+   */
+  const runOneClick = (kind: "masterpiece" | "analog") => {
+    const prompt = kind === "masterpiece" ? rollMasterpiecePrompt() : rollAnalogPrompt();
+    patchForm({ ...DEFAULT_FORM, promptMode: "custom", customPrompt: prompt });
+    toast(kind === "masterpiece" ? "Masterpiece brief composed" : "Analog film brief composed", {
+      description: "All previous direction was cleared — the full prompt is set and ready to develop.",
+      tone: "success",
+    });
+  };
+
   return (
     <Section no="07" title="The Brief" hint="Final prompt · updates live">
       <div className="mb-2.5 flex flex-wrap items-center gap-2">
@@ -64,8 +80,41 @@ export function PromptPreview() {
             <Lock className="h-3 w-3" /> Reference plate locked
           </span>
         ) : null}
-        <div className="ml-auto flex items-center gap-2">
-          <span className="font-mono text-[10px] text-ink/40 dark:text-paper/35">{shown.length} chars</span>
+        <div className="ml-auto flex items-center gap-1.5">
+          <span className="mr-1 font-mono text-[10px] text-ink/40 dark:text-paper/35">{shown.length} chars</span>
+
+          {/* Analog — full real-life film brief */}
+          <motion.button
+            whileTap={{ scale: 0.94 }}
+            onClick={() => runOneClick("analog")}
+            aria-label="Compose a full analog film brief and clear all direction"
+            title="Clears everything and writes a complete real-life analog film brief"
+            className={cn(
+              "flex h-8 items-center gap-1.5 rounded-sm border px-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] transition-colors duration-150",
+              "border-[#8a6f4d]/50 text-[#8a6f4d] hover:border-[#8a6f4d] hover:bg-[#8a6f4d]/10",
+              "dark:border-[#c9a06a]/50 dark:text-[#c9a06a] dark:hover:border-[#c9a06a] dark:hover:bg-[#c9a06a]/10"
+            )}
+          >
+            <Film className="h-3.5 w-3.5" />
+            Analog
+          </motion.button>
+
+          {/* Masterpiece — absolute-best-possible brief */}
+          <motion.button
+            whileTap={{ scale: 0.94 }}
+            onClick={() => runOneClick("masterpiece")}
+            aria-label="Compose a masterpiece brief and clear all direction"
+            title="Clears everything and writes the absolute-best-possible fashion brief"
+            className={cn(
+              "flex h-8 items-center gap-1.5 rounded-sm border px-2.5 font-mono text-[10px] font-bold uppercase tracking-[0.12em] transition-colors duration-150",
+              "border-gilt-500/60 bg-gilt-500/10 text-gilt-600 hover:border-gilt-500 hover:bg-gilt-500/20",
+              "dark:border-gilt-400/60 dark:bg-gilt-400/10 dark:text-gilt-300 dark:hover:border-gilt-400 dark:hover:bg-gilt-400/20"
+            )}
+          >
+            <Sparkles className="h-3.5 w-3.5" />
+            Masterpiece
+          </motion.button>
+
           <Button variant="ghost" size="sm" onClick={copy} aria-label="Copy prompt">
             {copied ? <Check className="h-3.5 w-3.5 text-wine-700 dark:text-gilt-400" /> : <Copy className="h-3.5 w-3.5" />}
             {copied ? "Copied" : "Copy"}
