@@ -1,4 +1,4 @@
-import type { FormState, SeriesFrame } from "../types";
+import type { FormState, MuseDetails, SeriesFrame } from "../types";
 import { CAMERA_OPTIONS, LIGHTING_CUSTOM_ID, LIGHTING_OPTIONS } from "./presets";
 
 /**
@@ -21,6 +21,93 @@ export function cameraText(form: FormState): string {
 }
 
 /**
+ * 01b measurements → renderable silhouette language. Diffusion models barely
+ * respond to raw numbers ("5'9\", 130 lbs, 24\" waist"); they respond to
+ * descriptive body language. Each imperial value is mapped to the visual
+ * phrase a model can actually draw, plus a hip-to-waist ratio check that
+ * emphasises an hourglass silhouette when the numbers warrant it.
+ */
+function bodySilhouette(d: MuseDetails): string {
+  const adj: string[] = [];
+  const features: string[] = [];
+
+  if (d.heightIn) {
+    adj.push(
+      d.heightIn <= 61
+        ? "petite"
+        : d.heightIn <= 67
+          ? "average-height"
+          : d.heightIn <= 73
+            ? "tall"
+            : "strikingly tall, statuesque"
+    );
+  }
+
+  if (d.weightLb && d.heightIn) {
+    const bmi = (703 * d.weightLb) / (d.heightIn * d.heightIn);
+    adj.push(
+      bmi < 18.5
+        ? "willowy and slender"
+        : bmi < 22
+          ? "slim"
+          : bmi < 25
+            ? "toned and fit"
+            : bmi < 28
+              ? "softly curvy"
+              : bmi < 32
+                ? "voluptuously curvy"
+                : "gracefully full-figured"
+    );
+  }
+
+  if (d.waistIn) {
+    features.push(
+      d.waistIn <= 22
+        ? "a tiny nipped-in waist"
+        : d.waistIn <= 26
+          ? "a defined, snatched waist"
+          : d.waistIn <= 30
+            ? "a softly defined waist"
+            : "a soft, relaxed waistline"
+    );
+  }
+
+  if (d.hipsIn) {
+    features.push(
+      d.hipsIn <= 34
+        ? "slim, straight hips"
+        : d.hipsIn <= 39
+          ? "gently curved hips"
+          : d.hipsIn <= 44
+            ? "pronounced, rounded hips"
+            : "dramatically curvy hips"
+    );
+  }
+
+  if (d.bust) {
+    const cup = d.bust.replace(/\d+/g, "");
+    features.push(
+      cup === "A" || cup === "B"
+        ? "a modest bust"
+        : cup === "C" || cup === "D"
+          ? "a shapely, full bust"
+          : "a generous, voluptuous bust"
+    );
+  }
+
+  if (d.hipsIn && d.waistIn && d.waistIn > 0) {
+    const ratio = d.hipsIn / d.waistIn;
+    if (ratio >= 1.4) features.push("an exaggerated hourglass silhouette");
+    else if (ratio >= 1.2) features.push("a classic hourglass silhouette");
+  }
+
+  if (adj.length && features.length) return `a ${adj.join(", ")} figure with ${features.join(", ")}`;
+  if (adj.length) return `a ${adj.join(", ")} figure`;
+  if (features.length) return `a figure with ${features.join(", ")}`;
+  return "";
+}
+
+/**
  * 01a–01i trait system → one flowing physical description.
  * Unset traits are skipped, so locking a few and rolling the rest
  * still reads naturally.
@@ -29,17 +116,13 @@ export function museText(form: FormState): string {
   const d = form.muse;
   if (!d) return "";
 
-  const fmtH = (inches: number) => `${Math.floor(inches / 12)}'${inches % 12}"`;
   /** True when a field holds a full composed phrase (from the Random boxes) rather than a chip value. */
   const phrase = (v: string) => v.includes(" with ") || v.includes(" and ") || v.length > 28;
 
   const silhouette: string[] = [];
-  if (d.heightIn) silhouette.push(`${fmtH(d.heightIn)} tall`);
-  if (d.weightLb) silhouette.push(`${d.weightLb} lbs`);
+  const built = bodySilhouette(d);
+  if (built) silhouette.push(built);
   if (d.bodyType) silhouette.push(phrase(d.bodyType) ? d.bodyType : `${d.bodyType} figure`);
-  if (d.bust) silhouette.push(`${d.bust} bust`);
-  if (d.waistIn) silhouette.push(`${d.waistIn}" waist`);
-  if (d.hipsIn) silhouette.push(`${d.hipsIn}" hips`);
 
   const face: string[] = [];
   if (d.faceShape) face.push(phrase(d.faceShape) ? d.faceShape : `${d.faceShape} face`);
