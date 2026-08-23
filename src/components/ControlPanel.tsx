@@ -748,7 +748,11 @@ function GenerateBar() {
    */
   const shootSeries = () => {
     const s = useStudioStore.getState();
-    const settings = { ...s.form };
+    // Anchor: the plate currently loaded in the lightbox — click any contact-
+    // sheet thumbnail and the next shoot anchors to that plate instead.
+    // Empty lightbox → the current direction on the form.
+    const anchor = s.generations.find((g) => g.id === s.activeId) ?? s.generations[0] ?? null;
+    const settings = anchor?.settings ?? { ...s.form };
     const n = s.seriesCount;
     const frames = drawSeriesFrames(n);
     const wildcards = frames.filter((f) => f.wildcard).length;
@@ -756,8 +760,9 @@ function GenerateBar() {
       .slice(0, 3)
       .map((f) => f.pose.split(",")[0])
       .join(" · ");
+    const source = anchor ? `Anchored to plate №${String(anchor.seed).slice(0, 5)}` : "From the current direction";
     toast(`Series of ${n} — one continuous shoot`, {
-      description: `${teaser}…${wildcards ? ` + ${wildcards} wildcard frame${wildcards > 1 ? "s" : ""}` : ""}`,
+      description: `${source} · ${teaser}…${wildcards ? ` + ${wildcards} wildcard frame${wildcards > 1 ? "s" : ""}` : ""}`,
       tone: "info",
     });
     // Engines that honour a negative prompt get an extra anti-collage guard.
@@ -779,7 +784,10 @@ function GenerateBar() {
    */
   const shootSeq = () => {
     const s = useStudioStore.getState();
-    const settings = { ...s.form };
+    // Same anchor rule as Series — the plate on screen (or the form if the
+    // lightbox is empty), read fresh at click time.
+    const anchor = s.generations.find((g) => g.id === s.activeId) ?? s.generations[0] ?? null;
+    const settings = anchor?.settings ?? { ...s.form };
     const n = s.seqCount;
     const steps = s.seqDirection === "remove" ? REMOVE_STEPS : ADD_STEPS;
     const frames = drawSeriesFrames(n);
@@ -790,8 +798,9 @@ function GenerateBar() {
       outfit: i === 0 ? settings.outfit : steps[(i - 1) % steps.length],
       negative: `${(settings.negative ?? "").trim() ? settings.negative.trim() + ", " : ""}grid, collage, multiple photos in one image, split screen, triptych, contact sheet, multiple people`,
     }));
+    const seqSource = anchor ? `Anchored to plate №${String(anchor.seed).slice(0, 5)}` : "From the current direction";
     toast(`Shooting a ${n}-step ${s.seqDirection === "remove" ? "remove" : "add"} sequence`, {
-      description: "Same model, same backdrop — the wardrobe shifts one layer per plate, angles and framing never repeat.",
+      description: `${seqSource} · same model, same backdrop — the wardrobe shifts one layer per plate, angles and framing never repeat.`,
       tone: "info",
     });
     void generate({
@@ -854,7 +863,7 @@ function GenerateBar() {
             disabled={generating}
             onClick={shootSeries}
             aria-label={`Generate a ${seriesCount}-plate series — same model, outfit and background, a new pose each frame`}
-            title="Same model, same outfit, same background — every frame gets a new pose, look and energy (crouches, floor poses, frozen jumps, motion blur…), with the occasional wildcard"
+            title="Anchored to the plate loaded in the lightbox — same model, outfit and background, every frame gets a new pose, look and energy (crouches, floor poses, frozen jumps, motion blur…), with the occasional wildcard"
             className="h-10 flex-1 uppercase tracking-[0.08em]"
           >
             <Film className="h-3.5 w-3.5" />
@@ -904,7 +913,7 @@ function GenerateBar() {
           disabled={generating}
           onClick={shootSeq}
           aria-label={`Generate a ${seqCount}-step ${seqDirection} wardrobe sequence`}
-          title={`Start from the current direction — same model and backdrop, ${seqDirection} one wardrobe layer per plate`}
+          title={`Anchored to the plate loaded in the lightbox — same model and backdrop, ${seqDirection} one wardrobe layer per plate`}
           className="h-10 flex-1 uppercase tracking-[0.08em]"
         >
           <Clapperboard className="h-3.5 w-3.5" />
@@ -913,7 +922,7 @@ function GenerateBar() {
       </div>
 
       <p className="mt-2 text-center font-mono text-[9px] uppercase tracking-[0.18em] text-ink/35 dark:text-paper/30">
-        ⌘↵ shoot · Series keeps muse & wardrobe, changes pose · Seq steps the wardrobe {seqDirection === "remove" ? "down" : "up"}
+        ⌘↵ shoot · Series & Seq anchor to the loaded plate · Series keeps the wardrobe, Seq steps it {seqDirection === "remove" ? "down" : "up"}
       </p>
     </div>
   );
