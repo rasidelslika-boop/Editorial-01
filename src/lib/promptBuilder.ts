@@ -27,7 +27,7 @@ export function cameraText(form: FormState): string {
  * phrase a model can actually draw, plus a hip-to-waist ratio check that
  * emphasises an hourglass silhouette when the numbers warrant it.
  */
-function bodySilhouette(d: MuseDetails): string {
+export function bodySilhouette(d: MuseDetails): string {
   const adj: string[] = [];
   const features: string[] = [];
 

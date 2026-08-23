@@ -77,7 +77,7 @@ import {
   rollSkinDetail,
 } from "../lib/randomizers";
 import { aiIdentity, aiMuseBlock, aiTrait } from "../lib/aiTraits";
-import { composeScenePlate } from "../lib/promptBuilder";
+import { bodySilhouette, composeScenePlate } from "../lib/promptBuilder";
 import { cn } from "../lib/utils";
 import { Button, Chip, Label, Section, SelectBox, Switch, inputCls, textareaCls } from "./ui";
 import { PromptPreview } from "./PromptPreview";
@@ -223,6 +223,8 @@ function MusePanel() {
   const muse = useStudioStore((s) => s.form.muse);
   const patchMuse = useStudioStore((s) => s.patchMuse);
   const patchForm = useStudioStore((s) => s.patchForm);
+  /** What the 01b numbers become in the prompt — shown live below the fields. */
+  const silhouette = bodySilhouette(muse);
 
   const chips = (pool: readonly string[]) => pool.map((v) => ({ label: v, value: v }));
   const numSel = (v: number | null) => (v != null ? String(v) : "");
@@ -323,6 +325,19 @@ function MusePanel() {
             <SelectBox ariaLabel="Hips in inches" placeholder="—" value={numSel(muse.hipsIn)} onChange={numSet("hipsIn")} options={HIPS_OPTIONS} />
           </div>
         </div>
+        {silhouette ? (
+          <motion.p
+            key={silhouette}
+            initial={{ opacity: 0.3, y: 3 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.25 }}
+            className="mt-2.5 border-t border-dashed border-ink/15 pt-2 font-mono text-[10px] leading-relaxed text-gilt-600 dark:border-paper/15 dark:text-gilt-300"
+            aria-live="polite"
+          >
+            <span className="mr-1.5 font-bold uppercase tracking-[0.14em] text-ink/40 dark:text-paper/35">Prompt reads →</span>
+            {silhouette}
+          </motion.p>
+        ) : null}
       </MuseSub>
 
       {/* 01c — Hair colour + texture */}
