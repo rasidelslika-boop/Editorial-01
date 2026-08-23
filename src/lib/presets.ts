@@ -150,6 +150,9 @@ export const RATIOS: { id: RatioId; label: string }[] = [
 ];
 
 export const ENGINES: { id: EngineId; label: string }[] = [
+  { id: "qwen-image", label: "Qwen-Image (DashScope)" },
+  { id: "wanx-turbo", label: "Wanx 2.1 Turbo (DashScope)" },
+  { id: "wanx-plus", label: "Wanx 2.1 Plus (DashScope)" },
   { id: "flux-pro", label: "Flux 1.1 Pro" },
   { id: "flux-dev", label: "Flux Dev" },
   { id: "sd3", label: "Stable Diffusion 3.5" },

@@ -1,4 +1,4 @@
-import type { GenerateRequest, ImageProvider, ProviderImage } from "./mock";
+import { liveDimensions, studioProvider, type GenerateRequest, type ImageProvider, type ProviderImage } from "./mock";
 import { ratioDimensions } from "../promptBuilder";
 
 /* ------------------------------------------------------------------ */
@@ -133,3 +133,102 @@ export const customProvider: ImageProvider = {
     return list.slice(0, req.count).map((url, i) => ({ url, seed: req.seed + i }));
   },
 };
+
+/* ------------------------------------------------------------------ */
+/*  Qwen platform — DashScope (Alibaba Cloud Model Studio).            */
+/*  Note: Qwen-Max / Qwen 3.x are text models. Image generation on     */
+/*  the Qwen platform is served by Qwen-Image and Wanx 2.1 — wired     */
+/*  here through the OpenAI-compatible endpoint. Flux and SD 3.5 are   */
+/*  also available through the same API key.                           */
+/* ------------------------------------------------------------------ */
+
+type DashScopeFamily = "qwen" | "wanx" | "flux" | "sd";
+
+const DASHSCOPE_MODELS: Record<string, { model: string; family: DashScopeFamily }> = {
+  "qwen-image": { model: "qwen-image", family: "qwen" },
+  "wanx-turbo": { model: "wanx2.1-t2i-turbo", family: "wanx" },
+  "wanx-plus": { model: "wanx2.1-t2i-plus", family: "wanx" },
+  "flux-pro": { model: "flux-merged", family: "flux" },
+  "flux-dev": { model: "flux-dev", family: "flux" },
+  sd3: { model: "stable-diffusion-3.5-large", family: "sd" },
+};
+
+/** Size strings in DashScope's `W*H` format, respecting each family's documented limits. */
+function dashScopeSize(family: DashScopeFamily, ratio: string, hq: boolean): string {
+  if (family === "wanx") {
+    // wanx2.1 documents exactly three sizes.
+    const [rw, rh] = ratio.split(":").map(Number);
+    if (Math.abs((rw || 1) - (rh || 1)) < 0.01) return "1024*1024";
+    return (rw || 1) > (rh || 1) ? "1280*720" : "720*1280";
+  }
+  const maxSide = hq ? (family === "qwen" ? 1664 : 1440) : family === "qwen" ? 1328 : 1024;
+  const multiple = family === "qwen" ? 32 : 64;
+  const { width, height } = liveDimensions(ratio, maxSide);
+  const round = (n: number) => Math.max(512, Math.round(n / multiple) * multiple);
+  return `${round(width)}*${round(height)}`;
+}
+
+export function qwenProvider(engine: string): ImageProvider {
+  const spec = DASHSCOPE_MODELS[engine] ?? DASHSCOPE_MODELS["wanx-turbo"];
+  return {
+    id: engine,
+    label: spec.model,
+
+    async generate(req, onProgress) {
+      const key = env.VITE_DASHSCOPE_API_KEY;
+      if (!key) throw new Error("VITE_DASHSCOPE_API_KEY is not set");
+      const base = (env.VITE_DASHSCOPE_BASE_URL ?? "https://dashscope-intl.aliyuncs.com/compatible-mode/v1").replace(/\/$/, "");
+
+      // Upscaling on Wanx Turbo promotes to the Plus model for a true quality lift.
+      const model =
+        req.quality === "hq" && spec.model === "wanx2.1-t2i-turbo" ? "wanx2.1-t2i-plus" : spec.model;
+      const size = dashScopeSize(spec.family, req.ratio, req.quality === "hq");
+
+      const images: ProviderImage[] = [];
+      for (let i = 0; i < req.count; i++) {
+        onProgress?.(`Rendering plate ${i + 1} of ${req.count} · ${model}`, 18 + (i / req.count) * 55);
+
+        const ctrl = new AbortController();
+        const timer = setTimeout(() => ctrl.abort(), 90_000);
+        let res: Response;
+        try {
+          res = await fetch(`${base}/images/generations`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+            body: JSON.stringify({
+              model,
+              prompt: req.prompt,
+              ...(spec.family === "wanx" || spec.family === "qwen" ? { negative_prompt: req.negative } : {}),
+              size,
+              n: 1,
+              seed: req.seed + i,
+            }),
+            signal: ctrl.signal,
+          });
+        } catch (err) {
+          clearTimeout(timer);
+          if (err instanceof DOMException && err.name === "AbortError") {
+            throw new Error("DashScope render timed out after 90s");
+          }
+          // Almost always browser CORS — hand the shoot to the studio engine so it still lands.
+          console.warn("[EditorialAI] DashScope direct call failed (likely CORS). Falling back to studio engine.", err);
+          const fallback = await studioProvider.generate(req, onProgress);
+          return fallback.map((img) => ({ ...img, fallback: true }));
+        } finally {
+          clearTimeout(timer);
+        }
+
+        if (!res.ok) {
+          const body = await res.text().catch(() => "");
+          throw new Error(`DashScope error ${res.status}: ${body.slice(0, 220)}`);
+        }
+        const data = await res.json();
+        const url: string | undefined = data?.data?.[0]?.url;
+        if (!url) throw new Error("DashScope returned no image URL");
+        images.push({ url, seed: req.seed + i });
+      }
+      onProgress?.("Printing", 100);
+      return images;
+    },
+  };
+}

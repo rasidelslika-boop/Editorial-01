@@ -14,7 +14,7 @@ export const DEFAULT_FORM: FormState = {
   lightingCustom: "",
   camera: "hasselblad",
   ratio: "4:5",
-  engine: "flux-pro",
+  engine: "qwen-image",
   reference: "Vogue Italia",
   negative: NEGATIVE_DEFAULT,
   seed: null,

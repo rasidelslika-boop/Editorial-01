@@ -1,6 +1,15 @@
 export type RatioId = "1:1" | "4:5" | "3:4" | "2:3" | "16:9" | "9:16" | "21:9";
 
-export type EngineId = "flux-pro" | "flux-dev" | "sd3" | "dalle3" | "mj6" | "custom";
+export type EngineId =
+  | "flux-pro"
+  | "flux-dev"
+  | "sd3"
+  | "dalle3"
+  | "qwen-image"
+  | "wanx-turbo"
+  | "wanx-plus"
+  | "mj6"
+  | "custom";
 
 export type PromptMode = "auto" | "custom";
 

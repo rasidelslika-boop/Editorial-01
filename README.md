@@ -59,6 +59,14 @@ interface ImageProvider {
 Create a `.env.local` in the project root:
 
 ```bash
+# Qwen platform — DashScope / Alibaba Cloud Model Studio (Qwen-Image, Wanx 2.1,
+# plus Flux and SD 3.5 through the same key)
+VITE_DASHSCOPE_API_KEY=sk-...
+# Optional — defaults to the international endpoint.
+# China mainland: https://dashscope.aliyuncs.com/compatible-mode/v1
+# Browser CORS proxy (recommended, see below): https://your-worker.example.com/compatible-mode/v1
+VITE_DASHSCOPE_BASE_URL=https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+
 # DALL·E 3 (OpenAI)
 VITE_OPENAI_API_KEY=sk-...
 
@@ -70,6 +78,41 @@ VITE_BFL_API_KEY=...
 VITE_CUSTOM_ENDPOINT=https://your-api.example.com/generate
 ```
 
+### Qwen-Image & Wanx 2.1 (DashScope)
+
+`Qwen-Max` / `Qwen 3.x` are text models — image generation on the Qwen platform
+is served by **Qwen-Image** and **Wanx 2.1** (通义万相). EditorialAI wires both
+through DashScope's OpenAI-compatible endpoint:
+
+| Studio engine             | DashScope model            | Notes                         |
+| ------------------------- | -------------------------- | ----------------------------- |
+| Qwen-Image (DashScope)    | `qwen-image`               | Best text & editorial detail  |
+| Wanx 2.1 Turbo (DashScope)| `wanx2.1-t2i-turbo`        | Fastest; upscale promotes to Plus |
+| Wanx 2.1 Plus (DashScope) | `wanx2.1-t2i-plus`         | Highest Wanx quality          |
+| Flux Pro / Dev, SD 3.5    | `flux-merged` / `flux-dev` / `stable-diffusion-3.5-large` | same key |
+
+**Browser CORS:** DashScope does not send CORS headers, so a browser calling it
+directly is blocked. Two options:
+
+1. Run a tiny proxy and point `VITE_DASHSCOPE_BASE_URL` at it. Cloudflare Worker:
+
+```js
+export default {
+  async fetch(req) {
+    const upstream = "https://dashscope-intl.aliyuncs.com";
+    return fetch(new URL(req.url.replace(/^https?:\/\/[^/]+/, upstream)), req);
+  },
+};
+```
+
+2. Generate server-side (the provider is a plain `fetch` — lift it into an API
+   route) so the key never ships to the browser. This is the recommended setup
+   for production.
+
+If the direct call fails, the studio automatically falls back to the free
+studio engine so a shoot never dead-ends. Note that DashScope image URLs expire
+after ~24 hours — download plates you want to keep.
+
 `resolveProvider(engine)` automatically uses the direct provider when its key is
 present, and otherwise uses the free studio engine (the UI surfaces a one-time
 toast telling you which route is active). Keys are read at build time via
@@ -80,6 +123,8 @@ keys are never shipped to the browser.
 
 | Studio engine       | Live provider                     | Key                    |
 | ------------------- | --------------------------------- | ---------------------- |
+| Qwen-Image          | DashScope `qwen-image`            | `VITE_DASHSCOPE_API_KEY` |
+| Wanx 2.1 Turbo/Plus | DashScope `wanx2.1-t2i-*`         | `VITE_DASHSCOPE_API_KEY` |
 | Flux 1.1 Pro        | `api.bfl.ml/v1/flux-pro-1.1`      | `VITE_BFL_API_KEY`     |
 | Flux Dev            | `api.bfl.ml/v1/flux-dev`          | `VITE_BFL_API_KEY`     |
 | Stable Diffusion 3.5| `api.bfl.ml/v1/sd3.5`             | `VITE_BFL_API_KEY`     |
