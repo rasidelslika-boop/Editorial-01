@@ -161,9 +161,12 @@ export function composePrompt(form: FormState, opts?: { baseLocked?: boolean }):
   const traits = museText(form);
   parts.push(`Fashion editorial photograph of ${identity}${traits ? `, ${traits}` : ""}`);
 
-  if (form.expression.trim()) parts.push(form.expression.trim());
-  if (form.outfit.trim()) parts.push(`wearing ${form.outfit.trim()}`);
+  // Outfit early — wardrobe carries enormous visual weight, and an empty
+  // outfit field gets a fashion-grade default so the engine never improvises
+  // casual filler (the classic "denim jacket" confabulation).
+  parts.push(`wearing ${form.outfit.trim() || "a chic high-fashion editorial outfit"}`);
   if (form.pose.trim()) parts.push(form.pose.trim());
+  if (form.expression.trim()) parts.push(form.expression.trim());
   if (form.location.trim()) parts.push(`set in ${form.location.trim()}`);
 
   // Light & glass
@@ -174,10 +177,9 @@ export function composePrompt(form: FormState, opts?: { baseLocked?: boolean }):
   const ref = form.reference.trim();
   if (ref && ref !== "none") parts.push(`in the style of ${ref}`);
 
-  // Quality boosters
-  parts.push(
-    "hyper-detailed skin texture, refined colour grade, professional fashion photography, 8k"
-  );
+  // Quality tail — kept deliberately short. Verbose booster lists dilute the
+  // selected details; the details above are what the engine should follow.
+  parts.push(form.engine === "mj6" ? "hyper-detailed, refined colour grade, professional fashion photography, 8k" : "professional fashion photography");
 
   let prompt = parts.join(", ");
 
@@ -212,7 +214,9 @@ export function composeScenePlate(
   const identity = form.model.trim() || "a breathtaking 21-year-old woman";
   const traits = museText(form);
   const muse = traits ? `${identity}, ${traits}` : identity;
-  const outfit = form.outfit.trim() || "her styled look";
+  // A fashion-grade default beats a vague one — "her styled look" invites the
+  // engine to improvise casual filler clothing.
+  const outfit = form.outfit.trim() || "a chic high-fashion editorial outfit";
   const shifting = opts?.wardrobeShifts === true;
 
   const settingBits = [form.location.trim(), lightingText(form), `shot on ${cameraText(form)}`]
@@ -235,7 +239,7 @@ export function composeScenePlate(
     `${ref && ref !== "none" ? `, in the style of ${ref}` : ""}. ` +
     `The model is ${muse}. ${outfitLine} ` +
     `In this photograph she is captured in a ${frame.framing}, ${frame.pose}${motion}, ${frame.expression}, ` +
-    `hyper-detailed skin texture, refined colour grade, professional fashion photography, 8k`;
+    `professional fashion photography`;
 
   if (form.engine === "mj6") {
     return `${prompt} --ar ${form.ratio} --style raw --stylize 250${form.seed ? ` --seed ${form.seed}` : ""}`;

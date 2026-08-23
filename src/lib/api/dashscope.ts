@@ -236,9 +236,18 @@ async function routeImgAsync(shot: Shot): Promise<string> {
   const input = isLegacy
     ? { prompt: shot.prompt, ...(shot.negative ? { negative_prompt: shot.negative } : {}) }
     : { messages: [{ role: "user", content: [{ text: shot.prompt }] }] };
+  // prompt_extend MUST be false on every route — when left on (the default),
+  // the model rewrites the brief before rendering and the user's selected
+  // details drift into generic confabulation.
   const parameters = isLegacy
-    ? { size: shot.size, n: 1, seed: shot.seed, prompt_extend: true }
-    : { size: shot.size, n: 1, watermark: false, ...(shot.candidate.family === "z" ? {} : { thinking_mode: true }) };
+    ? { size: shot.size, n: 1, seed: shot.seed, prompt_extend: false }
+    : {
+        size: shot.size,
+        n: 1,
+        watermark: false,
+        prompt_extend: false,
+        ...(shot.candidate.family === "z" ? {} : { thinking_mode: true }),
+      };
 
   const data = await postJson(
     `${shot.host}/api/v1/services/aigc/image-generation/generation`,
@@ -291,6 +300,9 @@ async function routeCompat(shot: Shot): Promise<string> {
       size: shot.size,
       n: 1,
       seed: shot.seed,
+      // DashScope native flag — ignored if the compat layer doesn't know it,
+      // but stops brief-rewriting where it is honoured.
+      prompt_extend: false,
     },
     {},
     120_000

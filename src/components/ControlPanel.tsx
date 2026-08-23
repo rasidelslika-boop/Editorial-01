@@ -10,6 +10,7 @@ import {
   Loader2,
   Lock,
   Minus,
+  PenLine,
   Plus,
   Sparkles,
   Unlock,
@@ -753,7 +754,16 @@ function GenerateBar() {
   const seqDirection = useStudioStore((s) => s.seqDirection);
   const setSeqDirection = useStudioStore((s) => s.setSeqDirection);
   const form = useStudioStore((s) => s.form);
+  const patchForm = useStudioStore((s) => s.patchForm);
   const toast = useGenerateToast();
+
+  /**
+   * Free-write trap guard: when 07 · The Brief is in Free-write mode (e.g.
+   * after Analog / Masterpiece, or manual prompt engineering), Generate sends
+   * that text — NOT the form. Make it impossible to miss, with a one-click
+   * exit back to the form.
+   */
+  const freeWrite = form.promptMode === "custom" && form.customPrompt.trim().length > 0;
 
   /**
    * Series — ONE continuous photoshoot: the exact same model, the exact same
@@ -828,6 +838,34 @@ function GenerateBar() {
 
   return (
     <div className="sticky bottom-0 z-10 border-t border-ink/15 bg-paper/95 px-5 py-3.5 backdrop-blur-sm dark:border-paper/15 dark:bg-ink/95 sm:px-6">
+      {/* Free-write notice — the form is being bypassed */}
+      {freeWrite ? (
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-2 flex items-center gap-2.5 border border-wine-700/50 bg-wine-700/10 px-3 py-2 dark:border-gilt-400/50 dark:bg-gilt-400/10"
+          role="status"
+        >
+          <PenLine className="h-3.5 w-3.5 shrink-0 text-wine-700 dark:text-gilt-300" />
+          <p className="min-w-0 flex-1 font-mono text-[10px] leading-snug text-wine-800 dark:text-gilt-200">
+            <span className="font-bold uppercase tracking-[0.12em]">Free-write brief active</span> — Generate is ignoring
+            the form and sending the text in 07 · The Brief.
+          </p>
+          <button
+            onClick={() => {
+              patchForm({ promptMode: "auto", customPrompt: "" });
+              toast("Back to the form", {
+                description: "Generate now follows your selected direction again.",
+                tone: "success",
+              });
+            }}
+            className="shrink-0 border border-wine-700/60 px-2 py-1 font-mono text-[9px] font-bold uppercase tracking-[0.1em] text-wine-700 transition-colors hover:bg-wine-700 hover:text-wine-50 dark:border-gilt-400/60 dark:text-gilt-300 dark:hover:bg-gilt-400 dark:hover:text-ink"
+          >
+            Use form
+          </button>
+        </motion.div>
+      ) : null}
+
       {/* Primary generate */}
       <motion.div whileHover={{ scale: generating ? 1 : 1.006 }}>
         <Button
@@ -836,7 +874,11 @@ function GenerateBar() {
           disabled={generating}
           onClick={() => void generate({ count: 1 })}
           className="w-full uppercase tracking-[0.14em]"
-          aria-label="Generate one image (Control or Command + Enter)"
+          aria-label={
+            freeWrite
+              ? "Generate one image from the free-write brief (Control or Command + Enter)"
+              : "Generate one image (Control or Command + Enter)"
+          }
         >
           {generating ? (
             <>
@@ -846,7 +888,7 @@ function GenerateBar() {
           ) : (
             <>
               <Camera className="h-4 w-4" />
-              Generate
+              {freeWrite ? "Generate Brief" : "Generate"}
               <kbd className="ml-1 hidden rounded-sm border border-wine-400/50 px-1.5 py-0.5 font-mono text-[9px] sm:inline">⌘↵</kbd>
             </>
           )}

@@ -159,7 +159,12 @@ export function useGenerate() {
         } else {
           toast(count > 1 ? `${count} plates developed` : "Plate developed", {
             tone: "success",
-            description: provider.mock ? "Rendered live by the free studio engine" : undefined,
+            description:
+              settings.promptMode === "custom" && settings.customPrompt.trim()
+                ? "Rendered from the free-write brief — flip 07 back to Auto-compose to follow the form."
+                : provider.mock
+                  ? "Rendered live by the free studio engine"
+                  : undefined,
           });
         }
         return gens;
