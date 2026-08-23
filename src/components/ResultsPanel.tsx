@@ -22,7 +22,7 @@ import {
 } from "lucide-react";
 import { useState } from "react";
 import { useGenerate } from "../hooks/useGenerate";
-import { useStudioStore } from "../stores/editorial";
+import { selectVisiblePlate, useStudioStore } from "../stores/editorial";
 import { useUIStore } from "../stores/ui";
 import { promptSummary } from "../lib/promptBuilder";
 import { SCENE_STARTERS } from "../lib/presets";
@@ -269,7 +269,8 @@ export function ResultsPanel() {
 
   const dismissArchive = () => setArchive(null);
 
-  const gen = generations.find((g) => g.id === activeId) ?? generations[0] ?? null;
+  // Shared with the Series/Seq shooters — the plate on screen is the anchor.
+  const gen = selectVisiblePlate({ generations, activeId });
 
   const applyStarter = (starterId: string) => {
     const st = SCENE_STARTERS.find((s) => s.id === starterId);

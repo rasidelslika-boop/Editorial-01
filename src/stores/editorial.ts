@@ -56,6 +56,15 @@ interface StudioState {
   clearArchive: () => void;
 }
 
+/**
+ * The plate currently on screen in the lightbox — the single source of truth
+ * shared by the ResultsPanel and the Series/Seq shooters, so a shoot can
+ * never anchor to a different plate than the one the user is looking at.
+ */
+export function selectVisiblePlate(s: { generations: Generation[]; activeId: string | null }): Generation | null {
+  return s.generations.find((g) => g.id === s.activeId) ?? s.generations[0] ?? null;
+}
+
 export const useStudioStore = create<StudioState>()(
   persist(
     (set, get) => ({

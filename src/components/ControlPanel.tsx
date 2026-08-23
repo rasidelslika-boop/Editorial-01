@@ -16,7 +16,7 @@ import {
   Unlock,
   type LucideIcon,
 } from "lucide-react";
-import { useStudioStore } from "../stores/editorial";
+import { selectVisiblePlate, useStudioStore } from "../stores/editorial";
 import { useGenerate } from "../hooks/useGenerate";
 import {
   CAMERA_OPTIONS,
@@ -773,11 +773,14 @@ function GenerateBar() {
    */
   const shootSeries = () => {
     const s = useStudioStore.getState();
-    // Anchor: the plate currently loaded in the lightbox — click any contact-
-    // sheet thumbnail and the next shoot anchors to that plate instead.
+    // Anchor = the plate on screen right now (shared selector with the
+    // lightbox, so they can never disagree). Click any contact-sheet
+    // thumbnail and the next shoot anchors to that plate instead.
     // Empty lightbox → the current direction on the form.
-    const anchor = s.generations.find((g) => g.id === s.activeId) ?? s.generations[0] ?? null;
-    const settings = anchor?.settings ?? { ...s.form };
+    const anchor = selectVisiblePlate(s);
+    const settings = anchor
+      ? { ...anchor.settings, promptMode: "auto" as const, customPrompt: "" }
+      : { ...s.form };
     const n = s.seriesCount;
     const frames = drawSeriesFrames(n);
     const wildcards = frames.filter((f) => f.wildcard).length;
@@ -785,7 +788,7 @@ function GenerateBar() {
       .slice(0, 3)
       .map((f) => f.pose.split(",")[0])
       .join(" · ");
-    const source = anchor ? `Anchored to plate №${String(anchor.seed).slice(0, 5)}` : "From the current direction";
+    const source = anchor ? `Anchored to plate №${String(anchor.seed).slice(0, 5)} — continuing its exact scene` : "From the current direction";
     toast(`Series of ${n} — one continuous shoot`, {
       description: `${source} · ${teaser}…${wildcards ? ` + ${wildcards} wildcard frame${wildcards > 1 ? "s" : ""}` : ""}`,
       tone: "info",
@@ -795,6 +798,10 @@ function GenerateBar() {
     const seriesNegative = `${baseNeg ? baseNeg + ", " : ""}grid, collage, multiple photos in one image, split screen, triptych, contact sheet, multiple people`;
     void generate({
       settings,
+      // The anchor plate's own render seed — this is what pins the scene so
+      // every frame continues the image on screen instead of redrawing a
+      // fresh (or old) one.
+      seed: anchor?.seed,
       perPlate: frames.map((f) => ({ pose: f.pose, expression: f.expression, negative: seriesNegative })),
       compose: (ps, i) => composeScenePlate(ps, frames[i]),
       seedStep: 0,
@@ -811,8 +818,10 @@ function GenerateBar() {
     const s = useStudioStore.getState();
     // Same anchor rule as Series — the plate on screen (or the form if the
     // lightbox is empty), read fresh at click time.
-    const anchor = s.generations.find((g) => g.id === s.activeId) ?? s.generations[0] ?? null;
-    const settings = anchor?.settings ?? { ...s.form };
+    const anchor = selectVisiblePlate(s);
+    const settings = anchor
+      ? { ...anchor.settings, promptMode: "auto" as const, customPrompt: "" }
+      : { ...s.form };
     const n = s.seqCount;
     const steps = s.seqDirection === "remove" ? REMOVE_STEPS : ADD_STEPS;
     const frames = drawSeriesFrames(n);
@@ -823,13 +832,16 @@ function GenerateBar() {
       outfit: i === 0 ? settings.outfit : steps[(i - 1) % steps.length],
       negative: `${(settings.negative ?? "").trim() ? settings.negative.trim() + ", " : ""}grid, collage, multiple photos in one image, split screen, triptych, contact sheet, multiple people`,
     }));
-    const seqSource = anchor ? `Anchored to plate №${String(anchor.seed).slice(0, 5)}` : "From the current direction";
+    const seqSource = anchor ? `Anchored to plate №${String(anchor.seed).slice(0, 5)} — continuing its exact scene` : "From the current direction";
     toast(`Shooting a ${n}-step ${s.seqDirection === "remove" ? "remove" : "add"} sequence`, {
       description: `${seqSource} · same model, same backdrop — the wardrobe shifts one layer per plate, angles and framing never repeat.`,
       tone: "info",
     });
     void generate({
       settings,
+      // Anchor plate's render seed — keeps the scene identical to the image
+      // on screen while the wardrobe steps.
+      seed: anchor?.seed,
       perPlate,
       compose: (ps, i) => composeScenePlate(ps, frames[i], { wardrobeShifts: true }),
       seedStep: 0,
