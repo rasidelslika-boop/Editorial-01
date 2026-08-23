@@ -101,6 +101,9 @@ export const useStudioStore = create<StudioState>()(
     }),
     {
       name: "editorial-ai:v1",
+      // Bumped on engine changes — old persisted archives (stale plates) are
+      // discarded so the studio always boots from a clean darkroom.
+      version: 2,
       partialize: (s) => ({
         form: s.form,
         generations: s.generations,
