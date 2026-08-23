@@ -156,7 +156,7 @@ export function ResultsPanel() {
   const savePlate = (kind: "png" | "hq") => {
     if (!gen) return;
     const target = kind === "hq" ? highResUrl(gen.url) ?? gen.url : gen.url;
-    const baseName = `editorial-plate-${gen.seed}${kind === "hq" ? "-hires" : ""}`;
+    const baseName = `rsfashionphoto-plate-${gen.seed}${kind === "hq" ? "-hires" : ""}`;
     const getBlob = async () => {
       const blob = await fetchBlob(target);
       return blob ? await applyGrade(blob, gen.filter) : null;
@@ -195,7 +195,7 @@ export function ResultsPanel() {
       filter: g.filter,
     }));
     const stamp = new Date().toISOString().slice(0, 10);
-    const baseName = `editorial-ai-session-${stamp}`;
+    const baseName = `rsfashionphoto-session-${stamp}`;
 
     setPacking(true);
     setPackStep({ done: 0, total: generations.length });
@@ -360,7 +360,7 @@ export function ResultsPanel() {
                 <div className="skeleton-sheen relative aspect-[4/5] w-full overflow-hidden border border-ink/15 dark:border-paper/15">
                   <div className="absolute left-0 h-px w-full bg-gradient-to-r from-transparent via-gilt-400/80 to-transparent animate-scan" aria-hidden />
                   <span className="absolute left-4 top-3.5 font-mono text-[10px] uppercase tracking-[0.2em] text-ink/40 dark:text-paper/40">
-                    EditorialAI · darkroom
+                    RSFASHIONPHOTO · darkroom
                   </span>
                   <span className="absolute bottom-3.5 right-4 font-mono text-[10px] uppercase tracking-[0.2em] text-ink/40 dark:text-paper/40">
                     plate № {generations.length + 1}

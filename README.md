@@ -1,4 +1,4 @@
-# EditorialAI — The AI Fashion Editorial Studio
+# RSFASHIONPHOTO — The AI Fashion Editorial Studio
 
 A production-ready single-page studio for generating high-end fashion editorial
 photography with AI. Cast the muse, scout the setting, style the look, and develop
@@ -68,9 +68,7 @@ VITE_DASHSCOPE_API_KEY=sk-...
 # China mainland: https://dashscope.aliyuncs.com/compatible-mode/v1
 VITE_DASHSCOPE_BASE_URL=https://ws-ou063af90w6dlklj.ap-southeast-1.maas.aliyuncs.com/compatible-mode/v1
 # Optional — deploy worker/dashscope-proxy.js to route around browser CORS (see below)
-VITE_DASHSCOPE_RELAY=https://editorial-ai-dashscope.<you>.workers.dev
-# Browser CORS relay (recommended — see "Browser CORS" below)
-VITE_DASHSCOPE_RELAY=https://editorial-ai-dashscope.<you>.workers.dev
+VITE_DASHSCOPE_RELAY=https://rsfashionphoto-dashscope.<you>.workers.dev
 
 # DALL·E 3 (OpenAI)
 VITE_OPENAI_API_KEY=sk-...
@@ -108,10 +106,10 @@ why. To render with your key from the browser, deploy the relay:
 
 ```bash
 npm i -g wrangler && wrangler login
-wrangler deploy worker/dashscope-proxy.js --name editorial-ai-dashscope
+wrangler deploy worker/dashscope-proxy.js --name rsfashionphoto-dashscope
 ```
 
-then set `VITE_DASHSCOPE_RELAY=https://editorial-ai-dashscope.<you>.workers.dev`
+then set `VITE_DASHSCOPE_RELAY=https://rsfashionphoto-dashscope.<you>.workers.dev`
 in `.env.local` and rebuild. For production, generate server-side (the provider
 is plain `fetch` — lift it into an API route) so the key never ships to the
 browser.

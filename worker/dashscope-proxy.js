@@ -1,5 +1,5 @@
 /**
- * EditorialAI — DashScope / Alibaba MaaS relay (Cloudflare Worker)
+ * RSFASHIONPHOTO — DashScope / Alibaba MaaS relay (Cloudflare Worker)
  *
  * DashScope and the regional MaaS workspace gateways don't send browser CORS
  * headers, so a page can't call them directly. This tiny worker adds them.
@@ -10,10 +10,10 @@
  *
  * Deploy:
  *   npm i -g wrangler && wrangler login
- *   wrangler deploy worker/dashscope-proxy.js --name editorial-ai-dashscope
+ *   wrangler deploy worker/dashscope-proxy.js --name rsfashionphoto-dashscope
  *
  * Then in the app's .env.local:
- *   VITE_DASHSCOPE_RELAY=https://editorial-ai-dashscope.<you>.workers.dev
+ *   VITE_DASHSCOPE_RELAY=https://rsfashionphoto-dashscope.<you>.workers.dev
  */
 
 const UPSTREAM = "https://ws-ou063af90w6dlklj.ap-southeast-1.maas.aliyuncs.com";

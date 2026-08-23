@@ -45,14 +45,14 @@ export function Header() {
   const exportProject = () => {
     downloadJson(
       {
-        app: "EditorialAI",
+        app: "RSFASHIONPHOTO",
         version: 1,
         exportedAt: new Date().toISOString(),
         currentSettings: form,
         lockedReferenceId: baseId,
         archive: generations,
       },
-      `editorial-ai-project-${new Date().toISOString().slice(0, 10)}.json`
+      `rsfashionphoto-project-${new Date().toISOString().slice(0, 10)}.json`
     );
     toast("Project exported", { description: "Settings, prompts and the full archive as JSON.", tone: "success" });
   };
@@ -66,8 +66,8 @@ export function Header() {
               <Aperture className="h-5 w-5" strokeWidth={1.6} />
             </span>
             <div className="min-w-0 leading-none">
-              <p className="font-display wonk truncate text-xl font-semibold italic tracking-tight sm:text-2xl">
-                Editorial<span className="text-wine-700 dark:text-gilt-400">AI</span>
+              <p className="font-display wonk truncate text-lg font-semibold italic tracking-tight sm:text-xl md:text-2xl">
+                RS<span className="text-wine-700 dark:text-gilt-400">FASHIONPHOTO</span>
               </p>
               <p className="mt-1 hidden font-mono text-[9px] uppercase tracking-[0.28em] text-ink/45 dark:text-paper/40 sm:block">
                 Vol. 01 — The Lightbox Issue
