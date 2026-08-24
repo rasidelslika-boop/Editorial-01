@@ -72,6 +72,16 @@ export const MUSE_VIBES = [
   "bohemian muse",
   "regal editorial queen",
   "sun-kissed surfer spirit",
+  "old-money heiress",
+  "Parisian intellectual muse",
+  "art-deco screen siren",
+  "desert mirage enigma",
+  "romantic Pre-Raphaelite muse",
+  "downtown rock-and-roll muse",
+  "gilded-age socialite",
+  "future-forward fashion muse",
+  "film-noir detective muse",
+  "tropical island goddess",
 ] as const;
 
 /* ------------------------------ 01a · hairstyle ---------------------------- */
@@ -242,6 +252,16 @@ export const BODY_TYPES = [
   "gracefully full-figured",
   "lean runway",
   "balanced classic",
+  "coltish model-off-duty",
+  "curvy bombshell",
+  "dancer's lithe",
+  "sculpted swimmer",
+  "elongated high-fashion",
+  "gracefully pear-shaped",
+  "power-shouldered",
+  "compact and curvy",
+  "reed-thin and elegant",
+  "softly rounded",
 ] as const;
 
 /* --------------------------- 01h · distinctive details ----------------------- */
@@ -989,7 +1009,7 @@ export const RANDOM_POSES = [
 
 /* -------------------------------- 03 · the look ------------------------------ */
 
-/** The top ten trending looks in contemporary fashion photography. */
+/** Twenty looks spanning contemporary trends and classic fashion-photography eras. */
 export const TRENDY_LOOKS = [
   "quiet luxury — tailored camel cashmere, fine ribbed knit, minimal gold jewellery",
   "balletcore — wrapped satin bodysuit, leg warmers, soft tulle layers",
@@ -1001,6 +1021,16 @@ export const TRENDY_LOOKS = [
   "cowboy-core — fringe, raw denim, turquoise, a wide-brim hat",
   "metallic futurism — liquid chrome and reflective fabrics, sculptural silhouettes",
   "coastal grandmother — crisp linen, pearls, relaxed tailoring",
+  "old Hollywood glamour — a satin column gown, opera gloves and a faux-fur stole",
+  "sixties mod — an A-line shift dress, knee-high boots, graphic colour blocking",
+  "seventies disco — a lamé jumpsuit, platform heels and a glitter-dusted lid",
+  "eighties power dressing — sharp shoulders, nipped-waist tailoring, gold hardware",
+  "Parisian chic — a navy Breton tee under a camel coat, silk scarf, ballet flats",
+  "grunge editorial — a deconstructed slip dress over a baby tee, lace-up boots",
+  "punk couture — safety pins, leather and tartan elevated to runway polish",
+  "preppy heritage — a tweed blazer, pleated skirt, knee socks and loafers",
+  "boho festival — flowing chiffon, fringed suede, layered silver jewellery",
+  "the New Look — a nipped waist, a full circle skirt and opera gloves",
 ] as const;
 
 /** Timeless editorial classics for the Classic roller. */

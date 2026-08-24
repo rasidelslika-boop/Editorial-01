@@ -38,6 +38,76 @@ export const MODEL_PRESETS: Preset[] = [
     value:
       "a pale-skinned redhead with copper coils, constellation freckles, green eyes, barely-there makeup",
   },
+  {
+    label: "Golden-Hour Bombshell",
+    value:
+      "a sun-kissed 26-year-old Brazilian bombshell, cascading chestnut waves, honey-gold skin, a cat-eye flick and a glossy brick-red lip",
+  },
+  {
+    label: "Parisian Chic",
+    value:
+      "an effortlessly chic 23-year-old Parisienne with a blunt black bob, straight brows, a natural flushed cheek and that je-ne-sais-quoi ease",
+  },
+  {
+    label: "Desert Nomad Muse",
+    value:
+      "a bronzed 25-year-old model of Moroccan heritage, kohl-rimmed almond eyes, dark braids wrapped in gold thread, luminous sun-warmed skin",
+  },
+  {
+    label: "Ice Queen Couture",
+    value:
+      "an ethereal 22-year-old Ukrainian model, white-platinum hair sculpted into a high bun, alabaster skin, glassy pale-blue eyes, frosted nude makeup",
+  },
+  {
+    label: "Classic Hollywood Glamour",
+    value:
+      "an old-Hollywood 27-year-old beauty, deep side-parted waves, porcelain skin, drawn-on beauty mark, vermilion lipstick and winged liner",
+  },
+  {
+    label: "Minimalist Cool-Girl",
+    value:
+      "an understated 21-year-old East Asian model, sleek center-parted hair, clean bare skin, straight-cut brows, a quiet magnetic composure",
+  },
+  {
+    label: "Renaissance Muse",
+    value:
+      "a Botticelli-esque 24-year-old Italian muse, copper-red ringlets, soft ivory skin, rosebud lips, wide serene hazel eyes",
+  },
+  {
+    label: "Punk Editorial",
+    value:
+      "a bold 23-year-old with a shaved-undercut buzz, bleached brows, a dusting of fake freckles and a matte scarlet lip",
+  },
+  {
+    label: "Ballet-Inspired Grace",
+    value:
+      "a poised 22-year-old ballerina-turned-model, a flawless low bun, swan-like neck, dewy skin, softly flushed cheeks",
+  },
+  {
+    label: "Mediterranean Siren",
+    value:
+      "a statuesque 25-year-old Greek model, olive skin, dark glossy waves, strong brows, a deep wine lip",
+  },
+  {
+    label: "Nordic Frost",
+    value:
+      "a porcelain 23-year-old Icelandic model, pale freckled skin, ash-blonde braids, ice-grey eyes, barely-there makeup",
+  },
+  {
+    label: "Safari-Chic Adventurer",
+    value:
+      "a tanned 24-year-old South African model, windswept caramel curls, warm brown eyes, a bronzed glow and a natural bitten-berry lip",
+  },
+  {
+    label: "Art-Deco Flapper",
+    value:
+      "a sculpted 26-year-old with finger-waved dark hair, a cupid's-bow crimson lip, smoky kohl eyes and a jewelled headband",
+  },
+  {
+    label: "Avant-Garde Icon",
+    value:
+      "a striking 24-year-old with a sculptural buzz cut and painted-on brows, striking bone structure, graphic silver liner",
+  },
 ];
 
 export const EXPRESSION_PRESETS: string[] = [
@@ -84,6 +154,54 @@ export const LOCATION_PRESETS: Preset[] = [
     label: "1970s Grand Hotel",
     value: "a faded grand hotel lobby — marble, brass, velvet — in a cinematic seventies palette",
   },
+  {
+    label: "Grand Palais Glasshouse",
+    value: "a 19th-century glass conservatory, wrought iron and misty ferns, soft diffused greenhouse light",
+  },
+  {
+    label: "Moroccan Riad Courtyard",
+    value: "a Moroccan riad courtyard of zellige tile, carved cedar and orange trees, dappled afternoon light",
+  },
+  {
+    label: "English Country Manor",
+    value: "a wood-panelled English manor library, leather armchairs, leaded windows, late amber light",
+  },
+  {
+    label: "New York Fire Escape",
+    value: "a cast-iron New York fire escape above a brick street, dawn light and waking steam",
+  },
+  {
+    label: "Santorini Cliffside",
+    value: "whitewashed cubic terraces on a Santorini cliff above the Aegean, bougainvillea and hard midday light",
+  },
+  {
+    label: "Industrial Warehouse Loft",
+    value: "a vast industrial loft, steel beams and polished concrete, long shafts of north window light",
+  },
+  {
+    label: "Venetian Canal, Dusk",
+    value: "a palazzo facade on a Venetian canal at dusk, lamplight rippling across dark water",
+  },
+  {
+    label: "Desert Highway Motel",
+    value: "a roadside desert motel at blue hour, neon sign humming, chrome and Americana",
+  },
+  {
+    label: "Scottish Highlands Estate",
+    value: "a heather moor below a stone tower, Scottish mist rolling through the glen",
+  },
+  {
+    label: "Art-Deco Oceanliner",
+    value: "the teak deck of an art-deco oceanliner, brass rails and an endless sea horizon",
+  },
+  {
+    label: "Provence Lavender Field",
+    value: "a Provençal lavender field running to the horizon, hazy summer light and humming cicadas",
+  },
+  {
+    label: "Backstage, Fashion Week",
+    value: "a fashion-week backstage, garment racks and ring-light mirrors, beautiful controlled chaos",
+  },
 ];
 
 /* ---------------------------------- 03 · The Pose ----------------------------------- */
@@ -96,6 +214,18 @@ export const POSE_PRESETS: Preset[] = [
   { label: "Dynamic Fabric Toss", value: "dynamic movement, fabric tossed and frozen in air" },
   { label: "Over-the-Shoulder", value: "back turned, looking over the shoulder" },
   { label: "Seated, Intimate", value: "seated on the floor, elbows on knees, intimate framing" },
+  { label: "The Classic Lean", value: "leaning back against a wall, ankles crossed, one hand loose in a pocket" },
+  { label: "Staircase Descent", value: "descending a grand staircase, one hand trailing the banister, gown flowing" },
+  { label: "Hand-in-Pocket Stroll", value: "mid-walk with a hand in a pocket, candid and relaxed" },
+  { label: "The Low Crouch", value: "crouching low, elbows on knees, street-style attitude" },
+  { label: "Floor Recline", value: "lying across a rug, legs bent, head tipped back, fabric pooling around her" },
+  { label: "Frozen Mid-Twirl", value: "frozen mid-twirl, dress fanning out like a halo, hair in flight" },
+  { label: "Perched on a Ledge", value: "perched on a ledge with legs dangling, chin resting on one hand" },
+  { label: "The Silhouette", value: "a pure profile silhouette, chin lifted toward the light" },
+  { label: "Walking-Away Glance", value: "walking away from camera, a single glance back over the shoulder" },
+  { label: "Kneeling in Fabric", value: "kneeling amid pooling fabric, back arched, chin tipped up" },
+  { label: "The Leap", value: "frozen mid-jump with both feet off the ground, coat flaring, hair suspended" },
+  { label: "Arm-Raise", value: "one arm raised overhead, chin following the hand, fabric sliding down the arm" },
 ];
 
 /* ------------------------------- 04 · Light & Glass --------------------------------- */
