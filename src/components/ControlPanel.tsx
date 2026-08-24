@@ -4,6 +4,7 @@ import {
   Camera,
   Clapperboard,
   Dices,
+  Feather,
   Film,
   Flame,
   Layers,
@@ -14,6 +15,8 @@ import {
   Plus,
   Sparkles,
   Unlock,
+  Wind,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { selectVisiblePlate, useStudioStore } from "../stores/editorial";
@@ -749,6 +752,8 @@ function GenerateBar() {
   const setBatchCount = useStudioStore((s) => s.setBatchCount);
   const seriesCount = useStudioStore((s) => s.seriesCount);
   const setSeriesCount = useStudioStore((s) => s.setSeriesCount);
+  const seriesDegree = useStudioStore((s) => s.seriesDegree);
+  const setSeriesDegree = useStudioStore((s) => s.setSeriesDegree);
   const seqCount = useStudioStore((s) => s.seqCount);
   const setSeqCount = useStudioStore((s) => s.setSeqCount);
   const seqDirection = useStudioStore((s) => s.seqDirection);
@@ -782,14 +787,15 @@ function GenerateBar() {
       ? { ...anchor.settings, promptMode: "auto" as const, customPrompt: "" }
       : { ...s.form };
     const n = s.seriesCount;
-    const frames = drawSeriesFrames(n);
+    const degree = s.seriesDegree;
+    const frames = drawSeriesFrames(n, degree);
     const wildcards = frames.filter((f) => f.wildcard).length;
     const teaser = frames
       .slice(0, 3)
       .map((f) => f.pose.split(",")[0])
       .join(" · ");
     const source = anchor ? `Anchored to plate №${String(anchor.seed).slice(0, 5)} — continuing its exact scene` : "From the current direction";
-    toast(`Series of ${n} — one continuous shoot`, {
+    toast(`Series of ${n} · ${degree} variation`, {
       description: `${source} · ${teaser}…${wildcards ? ` + ${wildcards} wildcard frame${wildcards > 1 ? "s" : ""}` : ""}`,
       tone: "info",
     });
@@ -932,14 +938,48 @@ function GenerateBar() {
           </Button>
         </div>
         <div className="flex items-stretch gap-1.5">
+          {/* Degree of pose variation across the series */}
+          <div
+            className="flex h-10 shrink-0 items-center rounded-sm border border-ink/25 p-0.5 dark:border-paper/25"
+            role="tablist"
+            aria-label="Series pose variation degree"
+            title="How far apart the poses are allowed to drift across the series"
+          >
+            {(
+              [
+                { id: "mild", label: "Mild", icon: Feather, title: "Quiet, closely-related editorial stances — subtle refinements" },
+                { id: "medium", label: "Med", icon: Wind, title: "The full editorial range with the occasional surprise" },
+                { id: "wild", label: "Wild", icon: Zap, title: "Maximum difference — leaps, spins, floor work and gravity-defying movement" },
+              ] as const
+            ).map((d) => (
+              <button
+                key={d.id}
+                role="tab"
+                aria-selected={seriesDegree === d.id}
+                title={d.title}
+                onClick={() => setSeriesDegree(d.id)}
+                className={cn(
+                  "flex h-full items-center gap-1 rounded-[3px] px-1.5 font-mono text-[10px] font-bold uppercase tracking-[0.06em] transition-colors",
+                  seriesDegree === d.id
+                    ? d.id === "wild"
+                      ? "bg-wine-700 text-wine-50 dark:bg-wine-500 dark:text-wine-950"
+                      : "bg-ink text-paper dark:bg-paper dark:text-ink"
+                    : "text-ink/45 hover:text-ink dark:text-paper/45 dark:hover:text-paper"
+                )}
+              >
+                <d.icon className="h-3 w-3" />
+                <span className="hidden sm:inline">{d.label}</span>
+              </button>
+            ))}
+          </div>
           <CountSelect value={seriesCount} onChange={setSeriesCount} label="Series plate count" options={[2, 3, 4, 5, 6, 8]} />
           <Button
             variant="outline"
             size="md"
             disabled={generating}
             onClick={shootSeries}
-            aria-label={`Generate a ${seriesCount}-plate series — same model, outfit and background, a new pose each frame`}
-            title="Anchored to the plate loaded in the lightbox — same model, outfit and background, every frame gets a new pose, look and energy (crouches, floor poses, frozen jumps, motion blur…), with the occasional wildcard"
+            aria-label={`Generate a ${seriesCount}-plate ${seriesDegree}-variation series — same model, outfit and background, a new pose each frame`}
+            title={`Anchored to the plate loaded in the lightbox — same model, outfit and background. ${seriesDegree === "mild" ? "Mild: subtle stance refinements." : seriesDegree === "medium" ? "Medium: the full editorial pose range." : "Wild: leaps, spins, floor work and gravity-defying movement."}` }
             className="h-10 flex-1 uppercase tracking-[0.08em]"
           >
             <Film className="h-3.5 w-3.5" />

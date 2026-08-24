@@ -83,6 +83,9 @@ export interface Generation {
 
 export type QuickActionKind = "pose" | "outfit" | "location" | "expression";
 
+/** How far apart the poses in a Series shoot are allowed to drift. */
+export type VariationDegree = "mild" | "medium" | "wild";
+
 export type ToastTone = "success" | "error" | "info";
 
 export interface ToastItem {

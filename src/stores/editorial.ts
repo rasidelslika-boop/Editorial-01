@@ -1,6 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
-import type { FormState, Generation, MuseDetails } from "../types";
+import type { FormState, Generation, MuseDetails, VariationDegree } from "../types";
 import { NEGATIVE_DEFAULT } from "../lib/presets";
 import { EMPTY_MUSE } from "../lib/randomizers";
 import { randomSeed } from "../lib/utils";
@@ -32,6 +32,7 @@ interface StudioState {
   baseId: string | null;
   batchCount: number;
   seriesCount: number;
+  seriesDegree: VariationDegree;
   seqCount: number;
   seqDirection: "remove" | "add";
   generating: boolean;
@@ -50,6 +51,7 @@ interface StudioState {
   toggleBase: (id: string) => void;
   setBatchCount: (n: number) => void;
   setSeriesCount: (n: number) => void;
+  setSeriesDegree: (d: VariationDegree) => void;
   setSeqCount: (n: number) => void;
   setSeqDirection: (d: "remove" | "add") => void;
   loadGeneration: (id: string) => void;
@@ -74,6 +76,7 @@ export const useStudioStore = create<StudioState>()(
       baseId: null,
       batchCount: 4,
       seriesCount: 4,
+      seriesDegree: "medium",
       seqCount: 4,
       seqDirection: "remove",
       generating: false,
@@ -115,6 +118,7 @@ export const useStudioStore = create<StudioState>()(
       setBatchCount: (n) => set({ batchCount: n }),
 
       setSeriesCount: (n) => set({ seriesCount: n }),
+      setSeriesDegree: (d) => set({ seriesDegree: d }),
 
       setSeqCount: (n) => set({ seqCount: n }),
 
@@ -151,6 +155,7 @@ export const useStudioStore = create<StudioState>()(
         baseId: s.baseId,
         batchCount: s.batchCount,
         seriesCount: s.seriesCount,
+        seriesDegree: s.seriesDegree,
         seqCount: s.seqCount,
         seqDirection: s.seqDirection,
       }),

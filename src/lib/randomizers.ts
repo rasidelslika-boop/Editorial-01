@@ -527,6 +527,42 @@ export const FANTASY_SETTINGS = [
  * Series vocabulary — the full range of editorial body language: static
  * stances, floor work, frozen action, and in-motion frames.
  */
+/**
+ * Mild-degree deck — calm, closely-related editorial stances. Used when the
+ * variation dial is set to "mild" so consecutive frames read as quiet
+ * refinements of one another rather than different shots.
+ */
+export const SERIES_POSES_MILD = [
+  "standing tall, weight on one hip, chin lifted, a commanding full-length stance",
+  "standing with shoulders relaxed, hands loosely clasped in front, serene posture",
+  "standing with one hand resting on her hip, the other arm relaxed at her side",
+  "leaning gently against a wall, ankles crossed, hands loose in pockets",
+  "standing in three-quarter profile, chin slightly tipped down, composed and still",
+  "sitting calmly on the edge of a step, hands resting on her knees",
+  "walking slowly toward the camera, a gentle measured stride, fabric settling",
+  "standing with head tilted slightly, one hand touching her collarbone",
+  "perched on the edge of a ledge, legs together, hands folded in her lap",
+  "standing with arms crossed loosely, weight shifted onto one leg, poised",
+] as const;
+
+/**
+ * Wild-degree additions — dramatic, high-energy action that only appears when
+ * the dial is set to "wild": leaps, floor work, spins and gravity-defying
+ * movement for maximum difference between frames.
+ */
+export const SERIES_POSES_WILD = [
+  "frozen mid-cartwheel, legs fanned overhead, hair and fabric exploding outward",
+  "balanced in a handstand, legs pointed, couture fabric cascading toward the ground",
+  "in a deep dramatic backbend, chin toward the sky, silhouette arched like a bow",
+  "leaping over a low wall, knees tucked, coat flaring behind her mid-flight",
+  "sliding across a polished floor on her knees, head thrown back, fabric skidding",
+  "spinning violently, hair whipping in a full circle, dress a blurred halo",
+  "sprinting at full tilt toward camera, arms pumping, pure kinetic energy",
+  "hanging from a beam by one arm, legs kicked up, a daring suspended frame",
+  "frozen mid-pirouette on one foot, the other leg raised, tutu-like flare of her skirt",
+  "diving toward the camera, arms outstretched, hair flying forward",
+] as const;
+
 export const SERIES_POSES = [
   "standing tall, weight on one hip, chin lifted, a commanding full-length stance",
   "crouching low with knees bent, elbows resting on knees, street-style attitude",
@@ -596,28 +632,44 @@ export const WILDCARD_FRAMES = [
  * never repeat within a shoot, and 1–2 frames are pulled from the wildcard
  * deck for genuinely unexpected results.
  */
-export function drawSeriesFrames(n: number): import("../types").SeriesFrame[] {
+export function drawSeriesFrames(
+  n: number,
+  degree: import("../types").VariationDegree = "medium"
+): import("../types").SeriesFrame[] {
   const frames: import("../types").SeriesFrame[] = [];
   const usedPoses = new Set<string>();
   const usedExpressions = new Set<string>();
-  const wildcardBudget = n >= 5 ? 2 : 1;
+
+  // The degree dial decides the pose deck, the wildcard budget, and how often
+  // action frames earn a motion treatment.
+  const poseDeck: readonly string[] =
+    degree === "mild"
+      ? SERIES_POSES_MILD
+      : degree === "wild"
+        ? [...SERIES_POSES, ...SERIES_POSES_WILD]
+        : SERIES_POSES;
+
+  const wildcardChance = degree === "mild" ? 0 : degree === "wild" ? 0.5 : 0.25;
+  const wildcardBudget = degree === "wild" ? Math.max(2, Math.ceil(n / 2)) : n >= 5 ? 2 : 1;
   let wildcardsUsed = 0;
 
   for (let i = 0; i < n; i++) {
-    if (wildcardsUsed < wildcardBudget && Math.random() < 0.25) {
+    if (degree !== "mild" && wildcardsUsed < wildcardBudget && Math.random() < wildcardChance) {
       wildcardsUsed++;
+      // Wild mode lets surprise frames carry motion energy too.
+      const motion = degree === "wild" && Math.random() < 0.6 ? pick(MOTION_MODIFIERS) : "";
       frames.push({
         pose: pick(WILDCARD_FRAMES),
         expression: pick(SERIES_EXPRESSIONS),
         framing: pick(SERIES_FRAMINGS),
-        motion: "",
+        motion,
         wildcard: true,
       });
       continue;
     }
 
-    let pose = pick(SERIES_POSES);
-    for (let guard = 0; usedPoses.has(pose) && guard < 14; guard++) pose = pick(SERIES_POSES);
+    let pose = pick(poseDeck);
+    for (let guard = 0; usedPoses.has(pose) && guard < 14; guard++) pose = pick(poseDeck);
     usedPoses.add(pose);
 
     // Mostly editorial register; a fun, excited look lands roughly 1 frame in 5.
@@ -628,8 +680,11 @@ export function drawSeriesFrames(n: number): import("../types").SeriesFrame[] {
     usedExpressions.add(expression);
 
     // Action poses usually earn a motion treatment; static ones rarely do.
-    const actiony = /jump|walk|run|spin|stride|sprint|twirl|mid-air/i.test(pose);
-    const motion = actiony && Math.random() < 0.65 ? pick(MOTION_MODIFIERS) : Math.random() < 0.15 ? pick(MOTION_MODIFIERS) : "";
+    // Mild keeps movement to a whisper; wild saturates action frames with blur.
+    const actiony = /jump|walk|run|spin|stride|sprint|twirl|mid-air|cartwheel|handstand|backbend|diving|sliding|leap/i.test(pose);
+    const motionChance = degree === "mild" ? 0.05 : degree === "wild" ? 0.85 : 0.65;
+    const idleChance = degree === "mild" ? 0.02 : degree === "wild" ? 0.35 : 0.15;
+    const motion = actiony && Math.random() < motionChance ? pick(MOTION_MODIFIERS) : Math.random() < idleChance ? pick(MOTION_MODIFIERS) : "";
 
     frames.push({ pose, expression, framing: pick(SERIES_FRAMINGS), motion });
   }
