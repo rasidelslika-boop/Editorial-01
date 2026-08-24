@@ -655,52 +655,206 @@ export const ADD_STEPS = [
 /*  "Masterpiece" and "Analog" build a complete, self-contained brief from scratch    */
 /*  and bypass every form setting. Each press rolls a fresh combination.              */
 
-const MP_MUSES = [
-  "a breathtaking 21-year-old Scandinavian supermodel with luminous porcelain skin, sculpted high cheekbones and piercing ice-blue eyes",
-  "a striking 24-year-old editorial model with golden-bronze skin, a statuesque frame and expressive amber eyes",
-  "an ethereal 22-year-old haute-couture muse with flawless ivory skin, a swan-like neck and delicate arched brows",
-  "a radiant 23-year-old cover model with warm caramel skin, freckles dusting her nose and deep espresso eyes",
-  "an elegant 25-year-old runway icon with alabaster skin, sharp jawline and smouldering dark eyes",
+/* ---- Masterpiece: multi-dimensional randomizer — every dimension rolls fresh ---- */
+
+const MP_IDENTITY = [
+  "a breathtaking 21-year-old Scandinavian supermodel",
+  "a striking 23-year-old Brazilian cover model",
+  "an ethereal 22-year-old Japanese haute-couture muse",
+  "a radiant 24-year-old Nigerian runway icon",
+  "an elegant 25-year-old Lebanese editorial model",
+  "a luminous 21-year-old Korean beauty",
+  "a statuesque 23-year-old Ethiopian high-fashion model",
+  "a magnetic 22-year-old Ukrainian muse",
+  "a regal 24-year-old Indian couture model",
+  "a glowing 21-year-old Colombian editorial muse",
+  "a poised 23-year-old French-Polynesian supermodel",
+  "a mesmerizing 22-year-old Moroccan high-fashion model",
+] as const;
+
+const MP_COMPLEXION = [
+  "luminous porcelain skin with sculpted high cheekbones",
+  "golden-bronze skin with a sunlit warmth",
+  "flawless ivory skin with a rose-tinted glow",
+  "warm caramel skin dusted with freckles",
+  "deep ebony skin with a luminous sheen",
+  "olive skin with a velvety matte finish",
+  "honey-gold skin with an opalescent glow",
+  "alabaster skin with delicate visible pores",
+  "mahogany skin catching the light like polished bronze",
+  "peaches-and-cream skin with a dewy finish",
+] as const;
+
+const MP_EYES = [
+  "piercing ice-blue eyes",
+  "smouldering dark espresso eyes",
+  "expressive amber eyes",
+  "sea-glass green eyes",
+  "violet-tinged grey eyes",
+  "hazel eyes flecked with gold",
+  "doe-shaped chocolate eyes",
+  "storm-grey eyes with heavy lashes",
+  "emerald eyes with a feline tilt",
+  "honey-gold eyes with a serene gaze",
 ] as const;
 
 const MP_HAIR = [
-  "hair swept into a sleek high-gloss chignon with wispy face-framing tendrils",
-  "long platinum waves caught mid-motion with a healthy luminous sheen",
+  "hair swept into a sleek high-gloss chignon with gilded pins",
+  "long platinum waves caught mid-motion with a luminous sheen",
   "a sculpted wet-look bob, immaculately slicked and glass-smooth",
-  "soft romantic curls pinned up loosely with gilded tendrils escaping",
+  "soft romantic curls pinned loosely with escaping tendrils",
   "a flawless center-parted curtain of silk-straight dark hair",
+  "braids woven into a couture crown",
+  "voluminous cinematic curls tumbling over one shoulder",
+  "floor-length waves cascading in slow motion",
+  "a razor-sharp platinum bob with glass shine",
+  "an immaculate ballerina bun wrapped in a silk ribbon",
 ] as const;
 
-const MP_COUTURE = [
-  "an architectural liquid-silver couture gown with dramatic sculpted shoulders",
-  "a bias-cut champagne silk slip gown that pours over every line",
-  "an avant-garde sculptural white gown with origami pleating and a sweeping train",
-  "a jewel-toned emerald velvet gown with a plunging neckline and opera gloves",
-  "a couture black tulle gown layered with hand-sewn crystal beading",
+const MP_GARMENTS = [
+  "an architectural couture gown with sculpted shoulders",
+  "a bias-cut slip gown that pours over every line",
+  "an avant-garde origami-pleated gown with a sweeping train",
+  "a corseted couture bodice with a cascading skirt",
+  "a liquid column dress with a dramatic thigh-high slit",
+  "a feathered couture cape over a fitted sheath",
+  "a structured power suit with exaggerated shoulders",
+  "a hand-embroidered tulle ballgown",
+  "a draped goddess gown with a jeweled bodice",
+  "a sculptural jumpsuit with a plunging neckline",
+  "a layered organza gown floating as she moves",
+  "a beaded mermaid gown with an opera-length train",
+  "a deconstructed couture trench with couture detailing",
+  "a crystal-encrusted mini dress with opera gloves",
 ] as const;
 
-const MP_SETTINGS = [
-  "a minimalist infinity-cove studio suffused with soft directional light",
-  "a gilded Parisian ballroom at golden hour, light spilling through tall windows",
-  "a monumental brutalist atrium with a single dramatic shaft of daylight",
-  "a mirror-still salt flat at dusk beneath a violet-and-amber sky",
-  "a grand marble staircase in a palatial hotel, lit by crystal chandeliers",
+const MP_FABRICS = [
+  "liquid silk",
+  "duchess satin",
+  "hand-pleated organza",
+  "crystal-beaded tulle",
+  "crushed velvet",
+  "metallic lamé",
+  "embroidered chiffon",
+  "sculptural mikado",
+  "iridescent taffeta",
+  "gilded brocade",
+  "feathered georgette",
+  "molten lamé",
+] as const;
+
+/** Deliberately silver-free — the engine leans on that cliché unprompted. */
+const MP_COLORS = [
+  "deep oxblood",
+  "champagne",
+  "emerald",
+  "midnight navy",
+  "pearl white",
+  "saffron gold",
+  "sapphire",
+  "blush rose",
+  "onyx black",
+  "viridian",
+  "amethyst",
+  "molten bronze",
+] as const;
+
+const MP_STYLING = [
+  "finished with opera gloves and diamond drop earrings",
+  "finished with a jeweled choker and metallic heels",
+  "finished with a structured headpiece and a sweeping silk scarf",
+  "finished with statement gold cuffs and a sleek clutch",
+  "finished with delicate pearl strands and satin gloves",
+  "finished with an architectural hat and a coat draped over the shoulders",
+  "finished with crystal ear climbers and sheer stockings",
+  "finished with a wide jeweled belt and a thigh slit",
+  "finished with a feathered fascinator and jeweled pins",
+  "finished with layered gold chains and a silk ribbon",
+] as const;
+
+const MP_POSES = [
+  "standing full-length with fabric caught mid-billow, commanding the frame",
+  "walking toward the camera mid-stride, coat flaring behind her",
+  "frozen mid-turn, gown fanning into a perfect circle",
+  "reclining on a marble chaise like a renaissance painting",
+  "perched on a grand staircase, one leg extended, chin lifted",
+  "caught mid-leap, suspended in the air, hair and fabric weightless",
+  "standing in profile, backlit, a sculptural silhouette",
+  "seated on the floor amid trailing fabric, looking up at the lens",
+  "striding through shallow water, ripples radiating outward",
+  "leaning into a dramatic low angle, towering over the camera",
+] as const;
+
+const MP_EXPRESSIONS = [
+  "a fierce, regal stare into the lens",
+  "serene eyes just past the camera, utterly composed",
+  "a smouldering over-the-shoulder glance",
+  "eyes closed, face tilted to the light",
+  "a quiet, unshakeable confidence",
+  "a rare unguarded smile breaking the glamour",
+  "an aloof, untouchable elegance",
+  "a piercing gaze that owns the frame",
+] as const;
+
+const MP_PLACES = [
+  "a gilded Parisian ballroom",
+  "a monumental brutalist atrium",
+  "a mirror-still salt flat",
+  "a grand marble staircase in a palatial hotel",
+  "a minimalist infinity-cove studio",
+  "a cliffside terrace above a turquoise sea",
+  "the ruins of a marble cathedral",
+  "a rooftop helipad above a glittering skyline",
+  "a candlelit grand library of towering shelves",
+  "a glasshouse conservatory on a private estate",
+  "a harbor at night, hulls and rigging silhouetted",
+  "a desert glass pavilion at dusk",
+  "an opera house with empty velvet seats",
+  "a frozen lake under a violet aurora",
+] as const;
+
+const MP_MOMENTS = [
+  "at golden hour",
+  "at blue hour",
+  "under a dramatic storm light",
+  "in soft overcast daylight",
+  "at first light, mist on the air",
+  "by candlelight after dark",
+  "at high noon with hard sculptural sun",
+  "at dusk beneath a violet-and-amber sky",
+] as const;
+
+const MP_SCENE_DETAILS = [
+  "dust motes glowing in shafts of light",
+  "rose petals suspended mid-air",
+  "a mirrored floor doubling every line",
+  "drifting smoke curling through the frame",
+  "fabric trailing behind her like smoke",
+  "rain streaking the glass behind her",
+  "birds crossing the sky in the distance",
+  "polished marble throwing soft reflections",
 ] as const;
 
 const MP_LIGHTING = [
-  "lit with a single soft diffused beauty dish for flawless, dimensional glow",
-  "sculpted by dramatic chiaroscuro from one hard directional source",
-  "bathed in warm golden-hour rim light with gentle falloff into shadow",
+  "lit by a single soft beauty dish, flawless and dimensional",
+  "sculpted in dramatic chiaroscuro from one hard source",
+  "rim-lit in molten gold with gentle falloff into shadow",
   "wrapped in high-key seamless light, airy and luminous",
-  "lit with cinematic three-point glamour lighting, crisp and refined",
+  "lit with cinematic three-point glamour lighting",
+  "bathed in window light falling like a Renaissance painting",
+  "lit from below by candlelight, warm and mysterious",
+  "painted by a slow-moving spotlight, cinematic and precise",
 ] as const;
 
 const MP_CAMERAS = [
-  "shot on Phase One IQ4 150MP medium format, 80mm ƒ/2.8, breathtaking resolution",
-  "shot on Hasselblad H6D-100c, 120mm macro, tack-sharp with creamy tonality",
-  "captured on a 100-megapixel medium format digital back, 110mm ƒ/2, 8k detail",
-  "shot on Canon EOS R5 with an 85mm ƒ/1.2L prime, flawless bokeh",
-  "captured on Leica SL2-S with a 75mm Summilux, exquisite micro-contrast",
+  "shot on Phase One IQ4 150MP medium format, 80mm ƒ/2.8",
+  "shot on Hasselblad H6D-100c, 120mm macro",
+  "captured on a 100-megapixel digital back, 110mm ƒ/2",
+  "shot on Canon EOS R5, 85mm ƒ/1.2L prime",
+  "captured on Leica SL2-S, 75mm Summilux",
+  "shot on Hasselblad X2D 100C, 90mm ƒ/2.5, leaf-shutter calm",
+  "captured on Fujifilm GFX100 II, 110mm ƒ/2, painterly depth",
+  "shot on a large-format digital system, 150mm, exquisite compression",
 ] as const;
 
 const MP_REFERENCES = [
@@ -709,20 +863,61 @@ const MP_REFERENCES = [
   "in the style of W Magazine, bold contemporary couture editorial",
   "in the style of Vogue Paris, effortless sophisticated elegance",
   "in the style of a global luxury campaign, immaculate retouching",
+  "in the style of Vogue Arabia, opulent modern glamour",
+  "in the style of a Tom Ford campaign, dark saturated luxury",
+  "in the style of Dior haute couture advertising, immaculate romance",
+] as const;
+
+const MP_FLOURISH = [
+  "wind lifting the fabric in a single perfect gesture",
+  "a constellation of fine light particles drifting through the frame",
+  "fabric frozen mid-motion like liquid glass",
+  "a mirror-symmetrical composition of couture precision",
+  "a low-angle power crop with sky and architecture towering",
+  "slow-motion fabric trails blurring at the frame's edge",
+  "a single dramatic shadow cutting diagonally across the scene",
+  "an impossible stillness, as if time paused for her",
 ] as const;
 
 const MP_FINISH = [
   "ultra-high-definition, immaculate skin detail, refined colour grade, professional fashion photography, 8k",
   "hyper-detailed, flawless retouching, luxurious tonal range, award-winning editorial quality, 8k",
   "masterful composition, razor-sharp focus, cinematic depth, museum-grade print quality, 8k",
+  "the definitive cover shot — immaculate technique, flawless exposure, breathtaking detail, 8k",
 ] as const;
 
-/** Roll the absolute-best-possible AI fashion photograph — a complete, self-contained brief. */
+/** Remembers recent wardrobes so consecutive presses never repeat a look. */
+const mpRecentWardrobes = new Set<string>();
+
+/**
+ * Roll the absolute-best-possible AI fashion photograph — a complete,
+ * self-contained brief where EVERY dimension is randomized fresh: muse,
+ * complexion, eyes, hair, garment × fabric × colour × styling, pose,
+ * expression, place, moment, scene detail, light, flourish, camera,
+ * reference and finish. The combination space is astronomical, so no two
+ * presses ever read the same.
+ */
 export function rollMasterpiecePrompt(): string {
+  let wardrobe = "";
+  for (let guard = 0; guard < 10; guard++) {
+    wardrobe = `${pick(MP_GARMENTS)} of ${pick(MP_FABRICS)} in ${pick(MP_COLORS)}, ${pick(MP_STYLING)}`;
+    if (!mpRecentWardrobes.has(wardrobe)) break;
+  }
+  mpRecentWardrobes.add(wardrobe);
+  if (mpRecentWardrobes.size > 24) {
+    const oldest = mpRecentWardrobes.values().next().value;
+    if (oldest) mpRecentWardrobes.delete(oldest);
+  }
+
   return (
-    `Masterpiece fashion editorial photograph of ${pick(MP_MUSES)}, ${pick(MP_HAIR)}, ` +
-    `wearing ${pick(MP_COUTURE)}, ${pick(RANDOM_POSES)}, set in ${pick(MP_SETTINGS)}, ` +
-    `${pick(MP_LIGHTING)}, ${pick(MP_CAMERAS)}, ${pick(MP_REFERENCES)}, ${pick(MP_FINISH)}`
+    `An award-winning masterpiece of fashion editorial photography, technically perfect in every way. ` +
+    `The model: ${pick(MP_IDENTITY)} — ${pick(MP_COMPLEXION)}, ${pick(MP_EYES)}, ${pick(MP_HAIR)}. ` +
+    `Wardrobe (render strictly as described, in an unexpected palette — no silver, no chrome): ${wardrobe}. ` +
+    `She is ${pick(MP_POSES)}, ${pick(MP_EXPRESSIONS)}. ` +
+    `Set in ${pick(MP_PLACES)} ${pick(MP_MOMENTS)}, ${pick(MP_SCENE_DETAILS)}. ` +
+    `${pick(MP_LIGHTING)}; ${pick(MP_FLOURISH)}. ` +
+    `${pick(MP_CAMERAS)}, ${pick(MP_REFERENCES)}. ` +
+    `${pick(MP_FINISH)}`
   );
 }
 
