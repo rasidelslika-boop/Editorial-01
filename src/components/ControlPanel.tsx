@@ -13,6 +13,7 @@ import {
   Minus,
   PenLine,
   Plus,
+  Shuffle,
   Sparkles,
   Unlock,
   Wind,
@@ -1080,6 +1081,70 @@ export function ControlPanel() {
     });
   };
 
+  /**
+   * Random Master — one click fires the Random option of every section below
+   * at once: the muse (identity + all 01a–01i traits), the setting, the look,
+   * the pose and the expression. Everything is rolled fresh (AI where the
+   * section buttons use it, curated pools as the guaranteed fallback) and the
+   * result is assembled straight into the final prompt.
+   */
+  const randomMaster = async () => {
+    const local = rollMuse();
+    const [identity, block, location, outfit, pose] = await Promise.all([
+      aiIdentity(() => local.model),
+      aiMuseBlock(),
+      aiTrait({
+        describe:
+          "A photo-shoot-worthy location for a fashion editorial — anywhere from an empty studio to a lavish hotel, beach, factory or wasteland — one short descriptive phrase.",
+        fallback: () => pick(RANDOM_SETTINGS),
+      }),
+      aiTrait({
+        describe:
+          "A trending, camera-ready fashion look — garments, fabric and styling in one evocative phrase.",
+        fallback: () => pick(TRENDY_LOOKS),
+      }),
+      aiTrait({
+        describe:
+          "A fashion pose and composition direction, e.g. 'standing full-length, weight on one hip, chin lifted, fabric caught mid-motion'.",
+        fallback: () => pick(RANDOM_POSES),
+      }),
+    ]);
+
+    const muse = { ...local.details };
+    if (block) {
+      muse.hairstyle = block.hairstyle;
+      muse.hairColor = block.hairColor;
+      muse.eyeColor = block.eyes.replace(/\s*eyes$/i, "").trim();
+      muse.eyeShape = "";
+      muse.skinTone = block.skin;
+      muse.undertone = "";
+      muse.skinDetail = "";
+      muse.faceShape = block.face;
+      muse.faceFeatures = "";
+      muse.bodyType = block.bodyType;
+      muse.distinctive = block.distinctive;
+      muse.museVibe = block.museVibe;
+    }
+
+    patchForm({
+      model: identity,
+      muse,
+      expression: pick(EXPRESSION_PRESETS),
+      location,
+      outfit,
+      pose,
+      // Assemble into the final prompt — return to auto-compose so the rolled
+      // direction is what's shown and sent (clears any stale free-write brief).
+      promptMode: "auto",
+      customPrompt: "",
+    });
+
+    toast("Random Master — full direction rolled", {
+      description: `${identity} · ${location.split(",")[0]}…`,
+      tone: "success",
+    });
+  };
+
   return (
     <div className="flex h-full flex-col">
       <div className="min-h-0 flex-1 overflow-y-auto pb-2">
@@ -1088,7 +1153,18 @@ export function ControlPanel() {
           no="01"
           title="The Muse"
           hint="Cast your model · full trait dossier"
-          aside={<RollButton icon={Dices} label="Re-cast the entire muse" onRoll={recast} text="Re-cast" />}
+          aside={
+            <>
+              <RollButton icon={Dices} label="Re-cast the entire muse" onRoll={recast} text="Re-cast" />
+              <RollButton
+                icon={Shuffle}
+                label="Random Master — roll every section (muse, setting, look, pose, expression) into the prompt"
+                onRoll={randomMaster}
+                text="Random Master"
+                hot
+              />
+            </>
+          }
         >
           <PresetChips presets={MODEL_PRESETS} onPick={pickField("model")} activeValue={form.model} />
           <textarea
