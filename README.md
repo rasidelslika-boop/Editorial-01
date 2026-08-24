@@ -180,10 +180,38 @@ Brief") bypasses composition entirely for full prompt-engineering control.
 ```
 src/
 ├── components/   # Header, ControlPanel, PromptPreview, ResultsPanel,
-│                 # QuickActionModal, CompareOverlay, HistoryDrawer, Toasts, ui
+│                 # QuickActionModal, CompareOverlay, HistoryDrawer,
+│                 # FlickrDialog, Toasts, ui
 ├── hooks/        # useGenerate (orchestration), useKeyboardShortcuts
-├── lib/          # promptBuilder, presets, utils, api/
+├── lib/          # promptBuilder, presets, utils, flickr, api/
 ├── stores/       # editorial (persisted), ui
 ├── types/        # FormState, Generation, …
 └── App.tsx
+
+worker/
+├── dashscope-proxy.js   # optional DashScope CORS relay
+└── flickr-relay.js      # Flickr OAuth 1.0a signing relay (key + secret baked in)
 ```
+
+---
+
+## Posting plates to Flickr
+
+The lightbox has a **Flickr** button under the active plate. One click posts the
+plate to your photostream as a public photo, renamed `IMG_xxxx` (random number),
+with a fitting title, a written editorial description, and 30 tags composed from
+the plate's own direction (muse, wardrobe, scene, lighting, camera, vibe).
+
+Flickr requires OAuth 1.0a, and the consumer **secret must never ship to the
+browser**, so signing happens in a tiny relay worker with the credentials coded
+in (`worker/flickr-relay.js`):
+
+```bash
+wrangler deploy worker/flickr-relay.js --name rsfashionphoto-flickr
+```
+
+Then, in the app: click **Flickr** → paste the printed
+`https://rsfashionphoto-flickr.<you>.workers.dev` URL → **Connect to Flickr**
+(one-time authorisation tab) → done. Every later click publishes immediately.
+For production, move the key/secret into Worker secrets
+(`wrangler secret put FLICKR_API_KEY` / `FLICKR_API_SECRET`).

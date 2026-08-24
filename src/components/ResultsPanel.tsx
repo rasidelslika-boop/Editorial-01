@@ -26,6 +26,7 @@ import { selectVisiblePlate, useStudioStore } from "../stores/editorial";
 import { useUIStore } from "../stores/ui";
 import { promptSummary } from "../lib/promptBuilder";
 import { SCENE_STARTERS } from "../lib/presets";
+import { flickrIdentity, flickrWorkerUrl, publishToFlickr } from "../lib/flickr";
 import {
   applyGrade,
   buildZipArchive,
@@ -41,6 +42,7 @@ import {
 } from "../lib/utils";
 import type { Generation } from "../types";
 import { Button } from "./ui";
+import { FlickrDialog, FlickrMark } from "./FlickrDialog";
 
 const QUICK_ACTIONS: {
   key: "pose" | "outfit" | "location" | "expression";
@@ -134,6 +136,8 @@ export function ResultsPanel() {
   const [packStep, setPackStep] = useState<{ done: number; total: number } | null>(null);
   const [archive, setArchive] = useState<ArchiveResult | null>(null);
   const [clearArm, setClearArm] = useState(false);
+  const [flickrOpen, setFlickrOpen] = useState(false);
+  const [flickrBusy, setFlickrBusy] = useState(false);
 
   /** Two-step clear — first click arms, second click wipes the contact sheet. */
   const handleClear = () => {
@@ -271,6 +275,38 @@ export function ResultsPanel() {
 
   // Shared with the Series/Seq shooters — the plate on screen is the anchor.
   const gen = selectVisiblePlate({ generations, activeId });
+
+  /**
+   * Post the loaded plate to Flickr — IMG_xxxx filename, a fitting title, a
+   * written description and 30 tags. Opens the setup dialog until the relay
+   * is saved and the account is connected; after that, one click publishes.
+   */
+  const handleFlickr = async () => {
+    if (!gen) return;
+    if (!flickrWorkerUrl() || !flickrIdentity()) {
+      setFlickrOpen(true);
+      return;
+    }
+    if (flickrBusy) return;
+    setFlickrBusy(true);
+    toast("Publishing to Flickr", { description: "Fetching the plate and composing the caption…", tone: "info" });
+    try {
+      const { url } = await publishToFlickr(gen);
+      toast("Posted to Flickr", {
+        description: `Plate №${String(gen.seed).slice(0, 5)} is live — ${url}`,
+        tone: "success",
+      });
+      window.open(url, "_blank", "noopener");
+    } catch (err) {
+      toast("Flickr publish failed", {
+        description: err instanceof Error ? err.message : "Something went wrong while posting.",
+        tone: "error",
+      });
+      if (err instanceof Error && /relay|Connect/i.test(err.message)) setFlickrOpen(true);
+    } finally {
+      setFlickrBusy(false);
+    }
+  };
 
   const applyStarter = (starterId: string) => {
     const st = SCENE_STARTERS.find((s) => s.id === starterId);
@@ -574,6 +610,17 @@ export function ResultsPanel() {
                   <ArrowDownToLine className="h-3.5 w-3.5" /> High-res
                 </Button>
                 <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => void handleFlickr()}
+                  disabled={flickrBusy}
+                  aria-label="Post this plate to Flickr"
+                  title="Post to Flickr — IMG_xxxx filename, title, description and 30 tags"
+                >
+                  {flickrBusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FlickrMark className="h-3.5 w-3.5" />}
+                  {flickrBusy ? "Posting…" : "Flickr"}
+                </Button>
+                <Button
                   variant={baseId === gen.id ? "accent" : "outline"}
                   size="sm"
                   onClick={() => {
@@ -703,6 +750,9 @@ export function ResultsPanel() {
           </div>
         </div>
       )}
+
+      {/* Flickr setup / caption preview */}
+      <FlickrDialog open={flickrOpen} onClose={() => setFlickrOpen(false)} gen={gen} />
     </div>
   );
 }

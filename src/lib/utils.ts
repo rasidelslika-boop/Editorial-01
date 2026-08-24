@@ -161,7 +161,7 @@ export async function fetchBlob(url: string): Promise<Blob | null> {
 /*  top-level tab, displays the plate, and offers an anchor download plus        */
 /*  copy-to-clipboard and right-click/drag-out fallbacks that work anywhere.     */
 
-function blobToDataUri(blob: Blob): Promise<string> {
+export function blobToDataUri(blob: Blob): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
