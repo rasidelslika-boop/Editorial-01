@@ -1,7 +1,7 @@
-import type { Generation } from "../types";
-import { ENGINES } from "./presets";
-import { bodySilhouette, cameraText, lightingText } from "./promptBuilder";
-import { extFor, fetchBlob } from "./utils";
+import type { FormState, Generation } from "../types";
+import { aiText } from "./aiTraits";
+import { cameraText, lightingText } from "./promptBuilder";
+import { extFor, fetchBlob, hashString } from "./utils";
 
 /* ------------------------------------------------------------------ */
 /*  Flickr publishing — fully client-side.                            */
@@ -267,35 +267,92 @@ export function flickrFilename(): string {
 }
 
 function composeTitle(gen: Generation): string {
-  const s = gen.settings;
+  const s = gen.settings ?? ({} as FormState);
   const muse = s.muse;
-  const who = muse?.museVibe ? cap(muse.museVibe.replace(/^an?\s+/i, "")) : firstClause(s.model, 34) || "The Muse";
+  const who = muse?.museVibe ? cap(muse.museVibe.replace(/^an?\s+/i, "")) : firstClause(s.model ?? "", 34) || "The Muse";
   const where = s.location ? firstClause(s.location) : "the studio";
-  const no = `№${String(gen.seed).slice(0, 5)}`;
+  const no = `№${String(gen?.seed ?? 0).slice(0, 5)}`;
   return `${who} · ${where} — ${no}`.slice(0, 92);
 }
 
-function composeDescription(gen: Generation): string {
-  const s = gen.settings;
-  const muse = s.muse;
-  const silhouette = muse ? bodySilhouette(muse) : "";
-  const lines: string[] = [];
+/* ------------------------- Artistic caption craft ------------------------- */
 
-  lines.push(
-    `One frame from an ongoing fashion editorial — ${s.model.trim() || "an enigmatic high-fashion muse"}${
-      silhouette ? `, ${silhouette}` : ""
-    }.`
-  );
-  lines.push("");
-  if (s.outfit.trim()) lines.push(`Wardrobe — ${cap(s.outfit.trim())}.`);
-  if (s.location.trim()) lines.push(`Scene — ${cap(s.location.trim())}, ${lightingText(s)}.`);
-  lines.push(`Glass — ${cameraText(s)} · ${gen.ratio} frame · seed ${gen.seed}.`);
-  if (s.pose.trim()) lines.push(`Direction — ${cap(s.pose.trim())}${s.expression.trim() ? `, ${s.expression.trim()}` : ""}.`);
-  lines.push("");
-  const engineLabel = ENGINES.find((e) => e.id === gen.engine)?.label ?? gen.engine;
-  lines.push(`Developed in the RSFASHIONPHOTO darkroom · rendered by ${engineLabel} · plate ${gen.ratio}.`);
-  lines.push(`© RSFASHIONPHOTO — cast, scouted and graded by machine, art-directed by hand.`);
-  return lines.join("\n");
+const ART_OPENERS = [
+  "She holds the frame the way a secret holds a room.",
+  "Caught between one breath and the next,",
+  "There is a stillness here that fashion rarely permits.",
+  "Light finds her first —",
+  "Somewhere between posing and being,",
+  "The camera waits; she does not.",
+  "A study in grace under glass.",
+  "She wears the silence like couture.",
+] as const;
+
+const ART_CLOSERS = [
+  "What remains is not a picture but a temperature.",
+  "For one frame, fashion stops performing and simply is.",
+  "The plate remembers what the moment tried to leave.",
+  "It is less a portrait than a held breath.",
+  "Here, beauty is a verb.",
+  "Everything in the frame leans quietly toward her.",
+  "The image ends; the mood does not.",
+] as const;
+
+/**
+ * An elegant gallery-wall caption of a few lines, written from the plate's
+ * own direction. Deterministic per plate — the same photograph always speaks
+ * in the same voice.
+ */
+export function composeArtisticDescription(gen: Generation): string {
+  const s = gen.settings ?? ({} as FormState);
+  const muse = s.muse;
+  const seedHash = hashString(`${gen?.seed ?? 0}:${gen?.prompt ?? ""}`);
+  const pickAt = (pool: readonly string[], salt: number) => pool[Math.abs(seedHash + salt) % pool.length];
+
+  const subject = muse?.museVibe
+    ? `a ${muse.museVibe.replace(/^an?\s+/i, "")}`
+    : firstClause(s.model ?? "", 40) || "the muse";
+  const hair = muse?.hairstyle ? muse.hairstyle.toLowerCase() : "";
+  const eyes = muse?.eyeColor ? `${muse.eyeColor.toLowerCase()} eyes` : "";
+  const outfit = firstClause(s.outfit ?? "", 70);
+  const place = firstClause(s.location ?? "", 60);
+  const light = lightingText({ ...(s as FormState) }).toLowerCase();
+
+  const portrait = [subject, hair, eyes].filter(Boolean).join(", ");
+  const scene = outfit
+    ? `${cap(outfit)}${place ? `, adrift in ${place}` : ""} — ${light}.`
+    : place
+      ? `Set adrift in ${place} — ${light}.`
+      : `${cap(light)}.`;
+
+  return `${pickAt(ART_OPENERS, 0)}\n${cap(portrait)}.\n${scene}\n${pickAt(ART_CLOSERS, 3)}`;
+}
+
+/**
+ * Ask the live text model for a few elegant, artsy lines about this exact
+ * photograph — and fall back to the local composer if it can't answer.
+ */
+export async function aiArtisticDescription(gen: Generation): Promise<string> {
+  try {
+    const s = gen.settings ?? ({} as FormState);
+    const brief = [
+      s.model,
+      s.muse?.museVibe ? `overall vibe: ${s.muse.museVibe}` : "",
+      s.outfit ? `wearing ${s.outfit}` : "",
+      s.location ? `in ${s.location}` : "",
+      lightingText({ ...(s as FormState) }),
+      s.pose ?? "",
+    ]
+      .filter(Boolean)
+      .join("; ");
+    const text = await aiText(
+      `Write an elegant, artsy gallery caption of 2 to 4 short lines for this fashion editorial photograph — ${brief}. Lyrical, present tense, evocative. No hashtags, no quotation marks, no technical camera terms, never mention AI.`
+    );
+    if (text) return text;
+  } catch {
+    /* the local composer takes over */
+  }
+  return composeArtisticDescription(gen);
 }
 
 const CURATED_TAGS = [
@@ -380,18 +437,20 @@ export function composeTags(gen: Generation): string[] {
 }
 
 export function buildFlickrMetadata(gen: Generation): FlickrMetadata {
+  // Caption composition can never crash the studio — fall back gracefully.
   try {
     return {
       filename: flickrFilename(),
       title: composeTitle(gen),
-      description: composeDescription(gen),
+      description: composeArtisticDescription(gen),
       tags: composeTags(gen),
     };
   } catch {
     return {
       filename: flickrFilename(),
-      title: `Editorial plate №${String(gen?.seed ?? 0).slice(0, 5)}`,
-      description: "A fashion editorial plate developed in the RSFASHIONPHOTO darkroom.",
+      title: "Untitled Study in Light",
+      description:
+        "A quiet study of light and silhouette — composed in the stillness between poses, where fashion becomes feeling.",
       tags: CURATED_TAGS.slice(0, 30),
     };
   }
@@ -413,8 +472,10 @@ export async function publishToFlickr(
   const blob = await fetchBlob(gen.url);
   if (!blob) throw new Error("Couldn't fetch the plate bytes — it may have expired.");
 
-  onStage?.("Composing caption & tags");
+  onStage?.("Writing the caption");
   const meta = buildFlickrMetadata(gen);
+  // The posted description is AI-written; the local artistic composer is the fallback.
+  meta.description = await aiArtisticDescription(gen);
 
   onStage?.("Signing & uploading to Flickr");
   const apiParams: Record<string, string> = {

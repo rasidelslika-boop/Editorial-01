@@ -126,6 +126,32 @@ export async function aiMuseBlock(): Promise<Record<string, string> | null> {
   }
 }
 
+/**
+ * Free-form one-shot text — used for caption writing. Returns a few clean
+ * lines (inner line breaks preserved), or null if the model is unavailable.
+ */
+export async function aiText(instruction: string): Promise<string | null> {
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), TIMEOUT);
+    const res = await fetch(
+      `${TEXT_ENDPOINT}${encodeURIComponent(instruction)}?model=${MODEL}&private=true&seed=${Math.floor(Math.random() * 1e9)}`,
+      { signal: ctrl.signal }
+    );
+    clearTimeout(timer);
+    if (!res.ok) return null;
+    const text = (await res.text())
+      .split("\n")
+      .map((l) => l.replace(/^[\s"'`*\-–—]+/, "").trim())
+      .filter((l) => l.length > 0)
+      .join("\n")
+      .trim();
+    return text.length >= 20 && text.length <= 800 ? text : null;
+  } catch {
+    return null;
+  }
+}
+
 /** A fresh model identity line — "a breathtaking 21-year-old … woman". */
 export async function aiIdentity(fallback: () => string): Promise<string> {
   const result = await callModel(
