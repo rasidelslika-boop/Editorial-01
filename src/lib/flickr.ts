@@ -102,24 +102,13 @@ export interface FlickrMetadata {
 }
 
 const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
-const firstClause = (s: string, max = 46) => {
-  const clean = s.split(/[,—-]/)[0].replace(/^(a|an|the|in|set in|wearing)\s+/i, "").trim();
-  return clean.length > max ? clean.slice(0, max - 1).trimEnd() + "…" : clean;
-};
 
 /** "IMG_xxxx" with a fresh random number, per the house convention. */
 export function flickrFilename(): string {
   return `IMG_${String(1000 + Math.floor(Math.random() * 9000))}`;
 }
 
-function composeTitle(gen: Generation): string {
-  const s = gen.settings;
-  const muse = s.muse;
-  const who = muse?.museVibe ? cap(muse.museVibe.replace(/^an?\s+/i, "")) : firstClause(s.model, 34) || "The Muse";
-  const where = s.location ? firstClause(s.location) : "the studio";
-  const no = `№${String(gen.seed).slice(0, 5)}`;
-  return `${who} · ${where} — ${no}`.slice(0, 92);
-}
+
 
 function composeDescription(gen: Generation): string {
   const s = gen.settings;
