@@ -1,11 +1,17 @@
-import { Check, Link2, LogOut, Save } from "lucide-react";
+import { Check, KeyRound, Link2, Loader2, LogOut, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
+  beginAuth,
   buildFlickrMetadata,
-  disconnectFlickr,
-  flickrIdentity,
-  flickrWorkerUrl,
-  setFlickrWorkerUrl,
+  cancelAuth,
+  clearCredentials,
+  completeAuth,
+  disconnect,
+  getSession,
+  hasCredentials,
+  isAwaitingVerifier,
+  storeCredentials,
+  storedKey,
 } from "../lib/flickr";
 import { useUIStore } from "../stores/ui";
 import type { Generation } from "../types";
@@ -24,12 +30,16 @@ export function FlickrMark({ className }: { className?: string }) {
 
 export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: () => void; gen: Generation | null }) {
   const toast = useUIStore((s) => s.toast);
-  const [workerInput, setWorkerInput] = useState(flickrWorkerUrl() ?? "");
-  const [savedWorker, setSavedWorker] = useState(flickrWorkerUrl());
-  const [identity, setIdentity] = useState(flickrIdentity());
 
-  // Lazy + guarded — caption craft runs only while the dialog is open, and a
-  // malformed plate can never take the studio down with it.
+  const [keyInput, setKeyInput] = useState(storedKey() ?? "");
+  const [secretInput, setSecretInput] = useState("");
+  const [credsSaved, setCredsSaved] = useState(hasCredentials());
+  const [session, setSession] = useState(getSession());
+  const [awaiting, setAwaiting] = useState(isAwaitingVerifier());
+  const [verifier, setVerifier] = useState("");
+  const [busy, setBusy] = useState<"connect" | "verify" | null>(null);
+
+  // Preview only while open, and never let a bad plate throw during render.
   const meta = useMemo(() => {
     if (!open || !gen) return null;
     try {
@@ -39,92 +49,198 @@ export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: (
     }
   }, [gen, open]);
 
-  const saveWorker = () => {
-    if (!/^https?:\/\//.test(workerInput.trim())) {
-      toast("That doesn't look like a URL", { description: "Paste the full https://…workers.dev address.", tone: "error" });
+  const saveCreds = () => {
+    if (!keyInput.trim() || !secretInput.trim()) {
+      toast("Both fields are needed", { description: "Paste your Flickr API key and its secret.", tone: "error" });
       return;
     }
-    setFlickrWorkerUrl(workerInput);
-    setSavedWorker(workerInput.trim().replace(/\/+$/, ""));
-    toast("Relay saved", { tone: "success" });
+    storeCredentials(keyInput, secretInput);
+    setCredsSaved(true);
+    setSecretInput("");
+    toast("Credentials saved", { description: "They stay in this browser only — never sent anywhere but Flickr.", tone: "success" });
   };
 
-  const connect = () => {
-    const worker = savedWorker ?? flickrWorkerUrl();
-    if (!worker) {
-      toast("Save the relay URL first", { tone: "error" });
+  const connect = async () => {
+    if (!credsSaved && (!keyInput.trim() || !secretInput.trim())) {
+      toast("Enter your key & secret first", { tone: "error" });
       return;
     }
-    const app = window.location.origin + window.location.pathname;
-    window.open(`${worker}/auth/start?app=${encodeURIComponent(app)}`, "_blank", "noopener");
-    toast("Authorise on Flickr", {
-      description: "A tab opened — approve the app, and you'll land back here connected.",
-      tone: "info",
-    });
+    if (!credsSaved) saveCreds();
+    setBusy("connect");
+    try {
+      const { authUrl } = await beginAuth();
+      window.open(authUrl, "_blank", "noopener");
+      setAwaiting(true);
+      toast("Authorise on Flickr", {
+        description: "A tab opened — press “OK, I'LL AUTHORIZE IT”, then paste the 9-digit code it shows back here.",
+        tone: "info",
+      });
+    } catch (err) {
+      toast("Couldn't start the connection", {
+        description: err instanceof Error ? err.message : "Something went wrong.",
+        tone: "error",
+      });
+    } finally {
+      setBusy(null);
+    }
   };
 
-  const disconnect = () => {
-    disconnectFlickr();
-    setIdentity(null);
+  const verify = async () => {
+    if (!verifier.trim()) {
+      toast("Paste the code first", { tone: "error" });
+      return;
+    }
+    setBusy("verify");
+    try {
+      const { user } = await completeAuth(verifier);
+      setSession(getSession());
+      setAwaiting(false);
+      setVerifier("");
+      toast("Connected to Flickr", { description: `Posting as @${user}. The Flickr button is now live.`, tone: "success" });
+    } catch (err) {
+      toast("Verification failed", {
+        description: err instanceof Error ? err.message : "That code didn't work.",
+        tone: "error",
+      });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const cancel = () => {
+    cancelAuth();
+    setAwaiting(false);
+    setVerifier("");
+  };
+
+  const disconnectAll = () => {
+    disconnect();
+    setSession(null);
     toast("Disconnected from Flickr", { tone: "info" });
   };
 
-  const refresh = () => setIdentity(flickrIdentity());
+  const forgetCreds = () => {
+    clearCredentials();
+    setCredsSaved(false);
+    setKeyInput("");
+    setSecretInput("");
+    setSession(null);
+    toast("Credentials removed", { tone: "info" });
+  };
 
   return (
     <Dialog open={open} onClose={onClose} kicker="08 · Distribution" title="Post to Flickr" wide>
-      {/* Relay */}
+      {/* Credentials */}
       <div className="border border-ink/12 p-3.5 dark:border-paper/12">
-        <Label>Signing relay (holds the key & secret — never the browser)</Label>
-        <div className="flex gap-1.5">
-          <input
-            aria-label="Flickr relay worker URL"
-            value={workerInput}
-            onChange={(e) => setWorkerInput(e.target.value)}
-            placeholder="https://rsfashionphoto-flickr.you.workers.dev"
-            className={cn(inputCls, "font-mono text-xs")}
-          />
-          <Button variant="outline" size="md" onClick={saveWorker} className="shrink-0" aria-label="Save relay URL">
-            <Save className="h-3.5 w-3.5" /> Save
-          </Button>
+        <div className="flex items-center gap-2">
+          <KeyRound className="h-3.5 w-3.5 text-wine-700 dark:text-gilt-400" />
+          <Label className="!mb-0">Flickr API credentials</Label>
         </div>
-        <p className="mt-1.5 font-mono text-[10px] leading-relaxed text-ink/45 dark:text-paper/40">
-          Deploy once: <span className="text-wine-700 dark:text-gilt-300">wrangler deploy worker/flickr-relay.js --name rsfashionphoto-flickr</span> — the
-          API key & secret are coded into the worker (see README).
+        <div className="mt-2 grid grid-cols-1 gap-1.5 sm:grid-cols-2">
+          <div>
+            <Label htmlFor="flickr-key" className="!mb-1">API key</Label>
+            <input
+              id="flickr-key"
+              aria-label="Flickr API key"
+              value={keyInput}
+              onChange={(e) => setKeyInput(e.target.value)}
+              placeholder="e.g. b08f77f369f6…"
+              autoComplete="off"
+              spellCheck={false}
+              className={cn(inputCls, "font-mono text-xs")}
+            />
+          </div>
+          <div>
+            <Label htmlFor="flickr-secret" className="!mb-1">API secret</Label>
+            <input
+              id="flickr-secret"
+              aria-label="Flickr API secret"
+              type="password"
+              value={secretInput}
+              onChange={(e) => setSecretInput(e.target.value)}
+              placeholder={credsSaved ? "••••••••••••••••" : "paste your secret"}
+              autoComplete="off"
+              spellCheck={false}
+              className={cn(inputCls, "font-mono text-xs")}
+            />
+          </div>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          <Button variant="outline" size="sm" onClick={saveCreds} aria-label="Save Flickr credentials">
+            Save credentials
+          </Button>
+          {credsSaved ? (
+            <button
+              onClick={forgetCreds}
+              className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink/45 underline-offset-4 hover:text-wine-700 hover:underline dark:text-paper/40 dark:hover:text-gilt-300"
+            >
+              Remove stored credentials
+            </button>
+          ) : null}
+        </div>
+        <p className="mt-2 flex items-start gap-1.5 font-mono text-[10px] leading-relaxed text-ink/45 dark:text-paper/40">
+          <ShieldCheck className="mt-0.5 h-3 w-3 shrink-0 text-gilt-500" />
+          Your secret never leaves this browser — it's only used locally to sign each request to Flickr. Nothing is sent to any
+          other server.
         </p>
       </div>
 
       {/* Connection */}
-      <div className="mt-3 flex flex-wrap items-center gap-3 border border-ink/12 p-3.5 dark:border-paper/12">
-        <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-ink/15 bg-ink/[0.03] dark:border-paper/15 dark:bg-paper/[0.05]">
-          <FlickrMark className="h-5 w-5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          {identity ? (
-            <>
-              <p className="font-display text-base font-semibold italic leading-tight">Connected as @{identity.user}</p>
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink/45 dark:text-paper/40">nsid {identity.nsid || "—"}</p>
-            </>
-          ) : (
-            <>
-              <p className="font-display text-base font-semibold italic leading-tight">Not connected yet</p>
-              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink/45 dark:text-paper/40">one-time authorisation on Flickr</p>
-            </>
-          )}
-        </div>
-        {identity ? (
-          <div className="flex gap-1.5">
-            <Button variant="ghost" size="sm" onClick={refresh} aria-label="Refresh connection">
-              <Check className="h-3.5 w-3.5" /> Refresh
-            </Button>
-            <Button variant="outline" size="sm" onClick={disconnect} aria-label="Disconnect from Flickr">
+      <div className="mt-3 border border-ink/12 p-3.5 dark:border-paper/12">
+        {session ? (
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-ink/15 bg-ink/[0.03] dark:border-paper/15 dark:bg-paper/[0.05]">
+              <FlickrMark className="h-5 w-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-display text-base font-semibold italic leading-tight">Connected as @{session.user}</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink/45 dark:text-paper/40">
+                nsid {session.nsid || "—"} · ready to post
+              </p>
+            </div>
+            <Button variant="outline" size="sm" onClick={disconnectAll} aria-label="Disconnect from Flickr">
               <LogOut className="h-3.5 w-3.5" /> Disconnect
             </Button>
           </div>
+        ) : awaiting ? (
+          <div>
+            <Label htmlFor="flickr-verifier">Paste the code Flickr showed you</Label>
+            <div className="flex gap-1.5">
+              <input
+                id="flickr-verifier"
+                aria-label="Flickr verification code"
+                value={verifier}
+                onChange={(e) => setVerifier(e.target.value)}
+                placeholder="9-digit code, e.g. 123-456-789"
+                autoComplete="off"
+                className={cn(inputCls, "font-mono text-xs")}
+              />
+              <Button variant="accent" size="md" onClick={() => void verify()} disabled={busy === "verify"} aria-label="Verify and connect">
+                {busy === "verify" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                Verify & connect
+              </Button>
+            </div>
+            <button
+              onClick={cancel}
+              className="mt-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink/45 underline-offset-4 hover:text-ink hover:underline dark:text-paper/40 dark:hover:text-paper"
+            >
+              Cancel and start over
+            </button>
+          </div>
         ) : (
-          <Button variant="accent" size="md" onClick={connect} aria-label="Connect to Flickr">
-            <Link2 className="h-3.5 w-3.5" /> Connect to Flickr
-          </Button>
+          <div className="flex flex-wrap items-center gap-3">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-full border border-ink/15 bg-ink/[0.03] dark:border-paper/15 dark:bg-paper/[0.05]">
+              <FlickrMark className="h-5 w-5" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="font-display text-base font-semibold italic leading-tight">Not connected yet</p>
+              <p className="font-mono text-[10px] uppercase tracking-[0.16em] text-ink/45 dark:text-paper/40">one-time authorisation</p>
+            </div>
+            <Button variant="accent" size="md" onClick={() => void connect()} disabled={busy === "connect"} aria-label="Connect to Flickr">
+              {busy === "connect" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Link2 className="h-3.5 w-3.5" />}
+              Connect to Flickr
+            </Button>
+          </div>
         )}
       </div>
 
@@ -160,9 +276,9 @@ export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: (
       )}
 
       <p className="mt-3 font-mono text-[10px] leading-relaxed text-ink/40 dark:text-paper/35">
-        One click of the Flickr button under the plate fetches the image, names it{" "}
-        <span className="text-ink/70 dark:text-paper/65">IMG_xxxx</span>, writes the title, description and 30 tags above, and posts it public to your
-        photostream.
+        Once connected, the <span className="text-ink/70 dark:text-paper/65">Flickr</span> button under the plate names the image{" "}
+        <span className="text-ink/70 dark:text-paper/65">IMG_xxxx</span>, writes the title, description and 30 tags above, and posts it
+        public to your photostream.
       </p>
     </Dialog>
   );

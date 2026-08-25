@@ -26,7 +26,7 @@ import { selectVisiblePlate, useStudioStore } from "../stores/editorial";
 import { useUIStore } from "../stores/ui";
 import { promptSummary } from "../lib/promptBuilder";
 import { SCENE_STARTERS } from "../lib/presets";
-import { flickrIdentity, flickrWorkerUrl, publishToFlickr } from "../lib/flickr";
+import { isReady, publishToFlickr } from "../lib/flickr";
 import {
   applyGrade,
   buildZipArchive,
@@ -277,17 +277,16 @@ export function ResultsPanel() {
   const gen = selectVisiblePlate({ generations, activeId });
 
   /**
-   * Post the loaded plate to Flickr — IMG_xxxx filename, a fitting title, a
-   * written description and 30 tags. Opens the setup dialog until the relay
-   * is saved and the account is connected; after that, one click publishes.
-   */
+    * Post the loaded plate to Flickr — IMG_xxxx filename, a fitting title, a
+    * written description and 30 tags. Opens the setup dialog until credentials
+    * are saved and the account is connected; after that, one click publishes.
+    */
   const handleFlickr = async () => {
     if (!gen) return;
-    if (!flickrWorkerUrl() || !flickrIdentity()) {
+    if (!isReady()) {
       setFlickrOpen(true);
       return;
-    }
-    if (flickrBusy) return;
+    }    if (flickrBusy) return;
     setFlickrBusy(true);
     toast("Publishing to Flickr", { description: "Fetching the plate and composing the caption…", tone: "info" });
     try {
@@ -302,7 +301,7 @@ export function ResultsPanel() {
         description: err instanceof Error ? err.message : "Something went wrong while posting.",
         tone: "error",
       });
-      if (err instanceof Error && /relay|Connect/i.test(err.message)) setFlickrOpen(true);
+      if (err instanceof Error && /key|secret|Connect|credentials/i.test(err.message)) setFlickrOpen(true);
     } finally {
       setFlickrBusy(false);
     }

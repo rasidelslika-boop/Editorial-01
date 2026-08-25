@@ -1,95 +1,249 @@
 import type { Generation } from "../types";
 import { ENGINES } from "./presets";
 import { bodySilhouette, cameraText, lightingText } from "./promptBuilder";
-import { blobToDataUri, extFor, fetchBlob } from "./utils";
+import { extFor, fetchBlob } from "./utils";
 
 /* ------------------------------------------------------------------ */
-/*  Flickr publishing — the consumer key/secret live in the relay     */
-/*  worker (worker/flickr-relay.js); the browser only ever holds its  */
-/*  own OAuth access token.                                           */
+/*  Flickr publishing — fully client-side.                            */
+/*                                                                    */
+/*  Your API key + secret live only in your browser (localStorage).   */
+/*  The secret is NEVER transmitted: it's used locally to compute an  */
+/*  OAuth 1.0a HMAC-SHA1 signature, and only that signature is sent   */
+/*  to Flickr. No relay, no server, nothing to deploy.                */
 /* ------------------------------------------------------------------ */
 
 const LS = {
-  worker: "rsfashionphoto-flickr-worker",
-  token: "rsfashionphoto-flickr-token",
-  secret: "rsfashionphoto-flickr-secret",
-  nsid: "rsfashionphoto-flickr-nsid",
-  user: "rsfashionphoto-flickr-user",
+  key: "rsflickr-api-key",
+  secret: "rsflickr-api-secret",
+  token: "rsflickr-access-token",
+  tokenSecret: "rsflickr-access-token-secret",
+  nsid: "rsflickr-nsid",
+  user: "rsflickr-user",
+  reqToken: "rsflickr-request-token",
+  reqSecret: "rsflickr-request-secret",
 };
 
-export interface FlickrIdentity {
+const REQUEST_TOKEN_URL = "https://www.flickr.com/services/oauth/request_token";
+const AUTHORIZE_URL = "https://www.flickr.com/services/oauth/authorize";
+const ACCESS_TOKEN_URL = "https://www.flickr.com/services/oauth/access_token";
+const UPLOAD_URL = "https://up.flickr.com/services/upload/";
+
+function lsGet(k: string): string | null {
+  try {
+    return localStorage.getItem(k);
+  } catch {
+    return null;
+  }
+}
+function lsSet(k: string, v: string) {
+  try {
+    localStorage.setItem(k, v);
+  } catch {
+    /* private mode */
+  }
+}
+function lsDel(k: string) {
+  try {
+    localStorage.removeItem(k);
+  } catch {
+    /* private mode */
+  }
+}
+
+/* ------------------------------ Credentials ------------------------------ */
+
+export function storeCredentials(key: string, secret: string) {
+  lsSet(LS.key, key.trim());
+  lsSet(LS.secret, secret.trim());
+}
+
+export function storedKey(): string | null {
+  return lsGet(LS.key);
+}
+
+export function hasCredentials(): boolean {
+  return Boolean(lsGet(LS.key) && lsGet(LS.secret));
+}
+
+export function clearCredentials() {
+  lsDel(LS.key);
+  lsDel(LS.secret);
+  disconnect();
+}
+
+export interface FlickrSession {
   token: string;
-  secret: string;
+  tokenSecret: string;
   nsid: string;
   user: string;
 }
 
-export function flickrWorkerUrl(): string | null {
-  try {
-    return localStorage.getItem(LS.worker);
-  } catch {
-    return null;
-  }
+export function getSession(): FlickrSession | null {
+  const token = lsGet(LS.token);
+  const tokenSecret = lsGet(LS.tokenSecret);
+  if (!token || !tokenSecret) return null;
+  return { token, tokenSecret, nsid: lsGet(LS.nsid) ?? "", user: lsGet(LS.user) ?? "connected" };
 }
 
-export function setFlickrWorkerUrl(url: string) {
-  try {
-    localStorage.setItem(LS.worker, url.trim().replace(/\/+$/, ""));
-  } catch {
-    /* private mode */
-  }
+export function isReady(): boolean {
+  return hasCredentials() && getSession() !== null;
 }
 
-export function flickrIdentity(): FlickrIdentity | null {
-  try {
-    const token = localStorage.getItem(LS.token);
-    const secret = localStorage.getItem(LS.secret);
-    if (!token || !secret) return null;
-    return {
-      token,
-      secret,
-      nsid: localStorage.getItem(LS.nsid) ?? "",
-      user: localStorage.getItem(LS.user) ?? "connected",
-    };
-  } catch {
-    return null;
-  }
+export function disconnect() {
+  lsDel(LS.token);
+  lsDel(LS.tokenSecret);
+  lsDel(LS.nsid);
+  lsDel(LS.user);
+  lsDel(LS.reqToken);
+  lsDel(LS.reqSecret);
 }
 
-export function disconnectFlickr() {
-  try {
-    localStorage.removeItem(LS.token);
-    localStorage.removeItem(LS.secret);
-    localStorage.removeItem(LS.nsid);
-    localStorage.removeItem(LS.user);
-  } catch {
-    /* private mode */
-  }
+/* ---------------------------- OAuth 1.0a core ---------------------------- */
+
+function percentEncode(s: string): string {
+  return encodeURIComponent(s).replace(/[!'()*]/g, (c) => "%" + c.charCodeAt(0).toString(16).toUpperCase());
 }
 
-/**
- * The relay redirects back to `origin/path#flickr_token=…` after the user
- * authorises on Flickr. Capture it once at boot, then clean the hash.
- */
-export function captureFlickrAuth(): boolean {
-  if (typeof window === "undefined" || !window.location.hash.includes("flickr_")) return false;
-  const params = new URLSearchParams(window.location.hash.slice(1));
-  const token = params.get("flickr_token");
-  const secret = params.get("flickr_secret");
-  if (!token || !secret) {
-    history.replaceState(null, "", window.location.pathname + window.location.search);
-    return false;
+function nonce(): string {
+  return Math.random().toString(36).slice(2, 12) + Date.now().toString(36);
+}
+
+function timestamp(): string {
+  return String(Math.floor(Date.now() / 1000));
+}
+
+async function hmacSha1Base64(key: string, data: string): Promise<string> {
+  const enc = new TextEncoder();
+  const cryptoKey = await crypto.subtle.importKey("raw", enc.encode(key), { name: "HMAC", hash: "SHA-1" }, false, ["sign"]);
+  const sig = await crypto.subtle.sign("HMAC", cryptoKey, enc.encode(data));
+  const bytes = new Uint8Array(sig);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+async function sign(
+  method: string,
+  url: string,
+  params: Record<string, string>,
+  consumerSecret: string,
+  tokenSecret: string
+): Promise<Record<string, string>> {
+  const keys = Object.keys(params).sort();
+  const paramString = keys.map((k) => `${percentEncode(k)}=${percentEncode(params[k])}`).join("&");
+  const baseString = `${method}&${percentEncode(url)}&${percentEncode(paramString)}`;
+  const signingKey = `${percentEncode(consumerSecret)}&${percentEncode(tokenSecret)}`;
+  const signature = await hmacSha1Base64(signingKey, baseString);
+  return { ...params, oauth_signature: signature };
+}
+
+function parseFormEncoded(text: string): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const pair of text.split("&")) {
+    const idx = pair.indexOf("=");
+    if (idx === -1) continue;
+    const k = decodeURIComponent(pair.slice(0, idx));
+    const v = decodeURIComponent(pair.slice(idx + 1));
+    out[k] = v;
   }
+  return out;
+}
+
+async function postSigned(
+  url: string,
+  params: Record<string, string>,
+  consumerSecret: string,
+  tokenSecret: string
+): Promise<Record<string, string>> {
+  const signed = await sign("POST", url, params, consumerSecret, tokenSecret);
+  const body = Object.entries(signed)
+    .map(([k, v]) => `${percentEncode(k)}=${percentEncode(v)}`)
+    .join("&");
+  let res: Response;
   try {
-    localStorage.setItem(LS.token, token);
-    localStorage.setItem(LS.secret, secret);
-    localStorage.setItem(LS.nsid, params.get("flickr_nsid") ?? "");
-    localStorage.setItem(LS.user, params.get("flickr_user") ?? "connected");
+    res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
   } catch {
-    /* private mode */
+    throw new Error(
+      "Couldn't reach Flickr from the browser (network/CORS). Flickr's token endpoint may be blocking this page — see the note below the button."
+    );
   }
-  history.replaceState(null, "", window.location.pathname + window.location.search);
-  return true;
+  const text = await res.text();
+  return parseFormEncoded(text);
+}
+
+/* ------------------------------- Auth flow ------------------------------- */
+
+export function isAwaitingVerifier(): boolean {
+  return Boolean(lsGet(LS.reqToken));
+}
+
+export function cancelAuth() {
+  lsDel(LS.reqToken);
+  lsDel(LS.reqSecret);
+}
+
+/** Step 1 — fetch a request token and return the Flickr authorisation URL. */
+export async function beginAuth(): Promise<{ authUrl: string }> {
+  const key = lsGet(LS.key);
+  const secret = lsGet(LS.secret);
+  if (!key || !secret) throw new Error("Enter your API key and secret first.");
+
+  const resp = await postSigned(
+    REQUEST_TOKEN_URL,
+    {
+      oauth_callback: "oob",
+      oauth_consumer_key: key,
+      oauth_nonce: nonce(),
+      oauth_signature_method: "HMAC-SHA1",
+      oauth_timestamp: timestamp(),
+      oauth_version: "1.0",
+    },
+    secret,
+    ""
+  );
+
+  if (!resp.oauth_token || !resp.oauth_token_secret) {
+    throw new Error("Flickr rejected the request — double-check your API key and secret.");
+  }
+  lsSet(LS.reqToken, resp.oauth_token);
+  lsSet(LS.reqSecret, resp.oauth_token_secret);
+  return { authUrl: `${AUTHORIZE_URL}?oauth_token=${resp.oauth_token}&perms=write` };
+}
+
+/** Step 2 — exchange the code Flickr showed you for a permanent access token. */
+export async function completeAuth(verifier: string): Promise<{ user: string }> {
+  const key = lsGet(LS.key);
+  const secret = lsGet(LS.secret);
+  const reqToken = lsGet(LS.reqToken);
+  const reqSecret = lsGet(LS.reqSecret);
+  if (!key || !secret) throw new Error("Enter your API key and secret first.");
+  if (!reqToken || !reqSecret) throw new Error("Press “Connect to Flickr” first, then paste the code it shows.");
+
+  const resp = await postSigned(
+    ACCESS_TOKEN_URL,
+    {
+      oauth_consumer_key: key,
+      oauth_nonce: nonce(),
+      oauth_signature_method: "HMAC-SHA1",
+      oauth_timestamp: timestamp(),
+      oauth_token: reqToken,
+      oauth_verifier: verifier.trim(),
+      oauth_version: "1.0",
+    },
+    secret,
+    reqSecret
+  );
+
+  if (!resp.oauth_token || !resp.oauth_token_secret) {
+    throw new Error("That code didn't work — copy the 9-digit code Flickr displayed and try again.");
+  }
+  lsSet(LS.token, resp.oauth_token);
+  lsSet(LS.tokenSecret, resp.oauth_token_secret);
+  lsSet(LS.nsid, resp.user_nsid ?? "");
+  lsSet(LS.user, resp.username ?? resp.fullname ?? "connected");
+  lsDel(LS.reqToken);
+  lsDel(LS.reqSecret);
+  return { user: resp.username ?? "connected" };
 }
 
 /* ------------------------------- Caption craft ------------------------------- */
@@ -103,7 +257,7 @@ export interface FlickrMetadata {
 
 const cap = (s: string) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 const firstClause = (s: string, max = 46) => {
-  const clean = (s ?? "").split(/[,—-]/)[0].replace(/^(a|an|the|in|set in|wearing)\s+/i, "").trim();
+  const clean = s.split(/[,—-]/)[0].replace(/^(a|an|the|in|set in|wearing)\s+/i, "").trim();
   return clean.length > max ? clean.slice(0, max - 1).trimEnd() + "…" : clean;
 };
 
@@ -112,17 +266,14 @@ export function flickrFilename(): string {
   return `IMG_${String(1000 + Math.floor(Math.random() * 9000))}`;
 }
 
-/** A fitting title, drawn from the plate's own direction. */
 function composeTitle(gen: Generation): string {
-  const s = gen.settings ?? ({} as Generation["settings"]);
+  const s = gen.settings;
   const muse = s.muse;
-  const who = muse?.museVibe ? cap(muse.museVibe.replace(/^an?\s+/i, "")) : firstClause(s.model ?? "", 34) || "The Muse";
+  const who = muse?.museVibe ? cap(muse.museVibe.replace(/^an?\s+/i, "")) : firstClause(s.model, 34) || "The Muse";
   const where = s.location ? firstClause(s.location) : "the studio";
-  const no = `№${String(gen.seed ?? 0).slice(0, 5)}`;
+  const no = `№${String(gen.seed).slice(0, 5)}`;
   return `${who} · ${where} — ${no}`.slice(0, 92);
 }
-
-
 
 function composeDescription(gen: Generation): string {
   const s = gen.settings;
@@ -229,7 +380,6 @@ export function composeTags(gen: Generation): string[] {
 }
 
 export function buildFlickrMetadata(gen: Generation): FlickrMetadata {
-  // Never let caption composition crash the studio — fall back gracefully.
   try {
     return {
       filename: flickrFilename(),
@@ -253,39 +403,61 @@ export async function publishToFlickr(
   gen: Generation,
   onStage?: (stage: string) => void
 ): Promise<{ photoid: string; url: string }> {
-  const worker = flickrWorkerUrl();
-  const id = flickrIdentity();
-  if (!worker) throw new Error("Set the relay worker URL first.");
-  if (!id) throw new Error("Connect to Flickr first.");
+  const key = lsGet(LS.key);
+  const secret = lsGet(LS.secret);
+  const session = getSession();
+  if (!key || !secret) throw new Error("Enter your API key and secret in the Flickr panel first.");
+  if (!session) throw new Error("Connect to Flickr first.");
 
   onStage?.("Fetching the plate");
   const blob = await fetchBlob(gen.url);
   if (!blob) throw new Error("Couldn't fetch the plate bytes — it may have expired.");
 
-  const meta = buildFlickrMetadata(gen);
   onStage?.("Composing caption & tags");
-  const dataUri = await blobToDataUri(blob);
-  const imageBase64 = dataUri.split(",")[1] ?? "";
+  const meta = buildFlickrMetadata(gen);
 
-  onStage?.("Posting to Flickr");
-  const res = await fetch(`${worker}/upload`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      oauth_token: id.token,
-      oauth_token_secret: id.secret,
-      user_nsid: id.nsid,
-      title: meta.title,
-      description: meta.description,
-      tags: meta.tags.join(" "),
-      filename: `${meta.filename}.${extFor(blob)}`,
-      mime: blob.type || "image/jpeg",
-      imageBase64,
-    }),
-  });
-  const data = await res.json().catch(() => null);
-  if (!res.ok || !data?.photoid) {
-    throw new Error(data?.error ?? `Flickr upload failed (${res.status}).`);
+  onStage?.("Signing & uploading to Flickr");
+  const apiParams: Record<string, string> = {
+    title: meta.title,
+    description: meta.description,
+    tags: meta.tags.join(" "),
+    is_public: "1",
+    is_friend: "0",
+    is_family: "0",
+    content_type: "1",
+  };
+  const oauthParams: Record<string, string> = {
+    oauth_consumer_key: key,
+    oauth_nonce: nonce(),
+    oauth_signature_method: "HMAC-SHA1",
+    oauth_timestamp: timestamp(),
+    oauth_token: session.token,
+    oauth_version: "1.0",
+  };
+  // The photo binary is excluded from the signature — only text params are signed.
+  const signed = await sign("POST", UPLOAD_URL, { ...oauthParams, ...apiParams }, secret, session.tokenSecret);
+
+  const form = new FormData();
+  for (const [k, v] of Object.entries(signed)) form.append(k, v);
+  form.append("photo", blob, `${meta.filename}.${extFor(blob)}`);
+
+  let res: Response;
+  try {
+    res = await fetch(UPLOAD_URL, { method: "POST", body: form });
+  } catch {
+    throw new Error("Couldn't reach Flickr's upload endpoint from the browser (network/CORS).");
   }
-  return { photoid: data.photoid, url: data.url };
+  const xml = await res.text();
+  const statMatch = xml.match(/stat="(\w+)"/);
+  if (!statMatch || statMatch[1] !== "ok") {
+    const errMatch = xml.match(/msg="([^"]*)"/);
+    throw new Error(errMatch ? `Flickr: ${errMatch[1]}` : "Flickr upload failed.");
+  }
+  const photoidMatch = xml.match(/<photoid>(\d+)<\/photoid>/);
+  if (!photoidMatch) throw new Error("Flickr didn't return a photo id.");
+  const photoid = photoidMatch[1];
+  const url = session.nsid
+    ? `https://www.flickr.com/photos/${session.nsid}/${photoid}/`
+    : `https://www.flickr.com/photo.gne?id=${photoid}`;
+  return { photoid, url };
 }

@@ -8,7 +8,6 @@ import { QuickActionModal } from "./components/QuickActionModal";
 import { CompareOverlay } from "./components/CompareOverlay";
 import { HistoryDrawer } from "./components/HistoryDrawer";
 import { Toasts } from "./components/Toasts";
-import { captureFlickrAuth } from "./lib/flickr";
 
 /** Layered ambient backdrop: grain, soft tints, and an oversized folio mark. */
 function AmbientBackground() {
@@ -32,16 +31,6 @@ export default function App() {
     root.classList.toggle("dark", theme === "dark");
     root.style.colorScheme = theme;
   }, [theme]);
-
-  // Landing back from the Flickr authorisation redirect — pick up the token.
-  useEffect(() => {
-    if (captureFlickrAuth()) {
-      useUIStore.getState().toast("Connected to Flickr", {
-        description: "You can now post plates straight from the lightbox.",
-        tone: "success",
-      });
-    }
-  }, []);
 
   return (
     <div className="relative flex min-h-dvh flex-col">

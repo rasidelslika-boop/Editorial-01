@@ -190,7 +190,7 @@ src/
 
 worker/
 ├── dashscope-proxy.js   # optional DashScope CORS relay
-└── flickr-relay.js      # Flickr OAuth 1.0a signing relay (key + secret baked in)
+└── flickr-relay.js      # optional server-side relay (unused; app is fully client-side)
 ```
 
 ---
@@ -202,16 +202,20 @@ plate to your photostream as a public photo, renamed `IMG_xxxx` (random number),
 with a fitting title, a written editorial description, and 30 tags composed from
 the plate's own direction (muse, wardrobe, scene, lighting, camera, vibe).
 
-Flickr requires OAuth 1.0a, and the consumer **secret must never ship to the
-browser**, so signing happens in a tiny relay worker with the credentials coded
-in (`worker/flickr-relay.js`):
+Everything runs **in the browser — no relay, no server, nothing to deploy.**
+Your API key and secret are stored only in your browser (localStorage). The
+secret is never transmitted: it's used locally to compute an OAuth 1.0a
+HMAC-SHA1 signature (via the Web Crypto API), and only that signature is sent
+to Flickr.
 
-```bash
-wrangler deploy worker/flickr-relay.js --name rsfashionphoto-flickr
-```
+Setup, one time:
 
-Then, in the app: click **Flickr** → paste the printed
-`https://rsfashionphoto-flickr.<you>.workers.dev` URL → **Connect to Flickr**
-(one-time authorisation tab) → done. Every later click publishes immediately.
-For production, move the key/secret into Worker secrets
-(`wrangler secret put FLICKR_API_KEY` / `FLICKR_API_SECRET`).
+1. Click **Flickr** under a plate → paste your **API key** and **API secret**
+   (from the Flickr App Garden) → **Save credentials**.
+2. **Connect to Flickr** → a tab opens → press *"OK, I'll authorize it"* →
+   Flickr shows a 9-digit code → paste it back and press **Verify & connect**.
+3. Done. Every later click of the **Flickr** button publishes immediately.
+
+You can **Remove stored credentials** or **Disconnect** from the same panel at
+any time. (`worker/flickr-relay.js` remains in the repo only as an optional
+server-side alternative and is not used by the app.)
