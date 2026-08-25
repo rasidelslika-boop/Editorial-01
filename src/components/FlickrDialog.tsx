@@ -180,8 +180,9 @@ export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: (
         </div>
         <p className="mt-2 flex items-start gap-1.5 font-mono text-[10px] leading-relaxed text-ink/45 dark:text-paper/40">
           <ShieldCheck className="mt-0.5 h-3 w-3 shrink-0 text-gilt-500" />
-          Your secret never leaves this browser — it's only used locally to sign each request to Flickr. Nothing is sent to any
-          other server.
+          Your secret never leaves this browser — it's only used locally to sign each request. Because Flickr blocks direct
+          browser calls, the signed request (and photo, when posting) may route through a public CORS relay — the relay never
+          sees your key or secret.
         </p>
       </div>
 

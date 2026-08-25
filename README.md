@@ -189,8 +189,7 @@ src/
 └── App.tsx
 
 worker/
-├── dashscope-proxy.js   # optional DashScope CORS relay
-└── flickr-relay.js      # optional server-side relay (unused; app is fully client-side)
+└── dashscope-proxy.js   # optional DashScope CORS relay
 ```
 
 ---
@@ -202,11 +201,17 @@ plate to your photostream as a public photo, renamed `IMG_xxxx` (random number),
 with a fitting title, a written editorial description, and 30 tags composed from
 the plate's own direction (muse, wardrobe, scene, lighting, camera, vibe).
 
-Everything runs **in the browser — no relay, no server, nothing to deploy.**
+Everything runs **in the browser — no relay to deploy, nothing to set up.**
 Your API key and secret are stored only in your browser (localStorage). The
 secret is never transmitted: it's used locally to compute an OAuth 1.0a
 HMAC-SHA1 signature (via the Web Crypto API), and only that signature is sent
 to Flickr.
+
+One technical note: Flickr's OAuth and upload endpoints send no CORS headers,
+so a web page can never call them directly. The app therefore routes each
+signed request through a public CORS relay (`corsproxy.io`, with a fallback).
+The relay forwards your request to Flickr but **never sees your key or secret**
+— only the already-signed request and, when posting, the photo itself.
 
 Setup, one time:
 
@@ -217,5 +222,4 @@ Setup, one time:
 3. Done. Every later click of the **Flickr** button publishes immediately.
 
 You can **Remove stored credentials** or **Disconnect** from the same panel at
-any time. (`worker/flickr-relay.js` remains in the repo only as an optional
-server-side alternative and is not used by the app.)
+any time.

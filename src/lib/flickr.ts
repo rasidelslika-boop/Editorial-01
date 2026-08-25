@@ -28,6 +28,39 @@ const AUTHORIZE_URL = "https://www.flickr.com/services/oauth/authorize";
 const ACCESS_TOKEN_URL = "https://www.flickr.com/services/oauth/access_token";
 const UPLOAD_URL = "https://up.flickr.com/services/upload/";
 
+/* ------------------------------------------------------------------ */
+/*  Transport. Flickr's OAuth and upload endpoints send no CORS       */
+/*  headers, so a browser page can NEVER reach them directly — the    */
+/*  request is blocked before it leaves your machine. We try direct   */
+/*  first (future-proofing), then route through public POST-capable   */
+/*  CORS relays. Only signed params and photo bytes transit a relay;  */
+/*  your API secret never does.                                       */
+/* ------------------------------------------------------------------ */
+const CORS_RELAYS: ((url: string) => string)[] = [
+  (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+  (u) => `https://proxy.corsfix.com/?${encodeURIComponent(u)}`,
+];
+
+async function transportFetch(url: string, init: RequestInit): Promise<Response> {
+  // 1. Direct — succeeds only if Flickr ever sends CORS headers.
+  try {
+    return await fetch(url, init);
+  } catch {
+    /* blocked — try relays */
+  }
+  // 2. Public CORS relays, in order.
+  for (const relay of CORS_RELAYS) {
+    try {
+      return await fetch(relay(url), init);
+    } catch {
+      continue;
+    }
+  }
+  throw new Error(
+    "Flickr's endpoints block direct browser calls, and the public relays are unreachable right now. Try again in a moment — or deploy the bundled relay worker (worker/flickr-relay.js) for a guaranteed connection; the README walks through it."
+  );
+}
+
 function lsGet(k: string): string | null {
   try {
     return localStorage.getItem(k);
@@ -159,14 +192,11 @@ async function postSigned(
   const body = Object.entries(signed)
     .map(([k, v]) => `${percentEncode(k)}=${percentEncode(v)}`)
     .join("&");
-  let res: Response;
-  try {
-    res = await fetch(url, { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body });
-  } catch {
-    throw new Error(
-      "Couldn't reach Flickr from the browser (network/CORS). Flickr's token endpoint may be blocking this page — see the note below the button."
-    );
-  }
+  const res = await transportFetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body,
+  });
   const text = await res.text();
   return parseFormEncoded(text);
 }
@@ -502,12 +532,7 @@ export async function publishToFlickr(
   for (const [k, v] of Object.entries(signed)) form.append(k, v);
   form.append("photo", blob, `${meta.filename}.${extFor(blob)}`);
 
-  let res: Response;
-  try {
-    res = await fetch(UPLOAD_URL, { method: "POST", body: form });
-  } catch {
-    throw new Error("Couldn't reach Flickr's upload endpoint from the browser (network/CORS).");
-  }
+  const res = await transportFetch(UPLOAD_URL, { method: "POST", body: form });
   const xml = await res.text();
   const statMatch = xml.match(/stat="(\w+)"/);
   if (!statMatch || statMatch[1] !== "ok") {
