@@ -1,4 +1,5 @@
-import { Check, KeyRound, Link2, Loader2, LogOut, ShieldCheck } from "lucide-react";
+import { motion } from "framer-motion";
+import { Check, Copy, ExternalLink, KeyRound, Link2, Loader2, LogOut, ShieldCheck } from "lucide-react";
 import { useMemo, useState } from "react";
 import {
   beginAuth,
@@ -15,7 +16,7 @@ import {
 } from "../lib/flickr";
 import { useUIStore } from "../stores/ui";
 import type { Generation } from "../types";
-import { cn } from "../lib/utils";
+import { cn, copyText } from "../lib/utils";
 import { Button, Dialog, Label, inputCls } from "./ui";
 
 /** The Flickr mark — two dots, in the house palette. */
@@ -38,6 +39,8 @@ export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: (
   const [awaiting, setAwaiting] = useState(isAwaitingVerifier());
   const [verifier, setVerifier] = useState("");
   const [busy, setBusy] = useState<"connect" | "verify" | null>(null);
+  const [authUrl, setAuthUrl] = useState<string | null>(null);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   // Preview only while open, and never let a bad plate throw during render.
   const meta = useMemo(() => {
@@ -69,11 +72,16 @@ export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: (
     setBusy("connect");
     try {
       const { authUrl } = await beginAuth();
-      window.open(authUrl, "_blank", "noopener");
+      // No window.open — browsers with a Cross-Origin-Opener-Policy (Firefox,
+      // and this preview pane) block programmatic popups to cross-origin
+      // pages. The link below is a real anchor the user clicks instead, which
+      // every browser honours.
+      setAuthUrl(authUrl);
       setAwaiting(true);
-      toast("Authorise on Flickr", {
-        description: "A tab opened — press “OK, I'LL AUTHORIZE IT”, then paste the 9-digit code it shows back here.",
-        tone: "info",
+      setLinkCopied(false);
+      toast("Authorisation link ready", {
+        description: "Click “Authorise on Flickr” below — it opens in a new tab.",
+        tone: "success",
       });
     } catch (err) {
       toast("Couldn't start the connection", {
@@ -82,6 +90,15 @@ export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: (
       });
     } finally {
       setBusy(null);
+    }
+  };
+
+  const copyLink = async () => {
+    if (!authUrl) return;
+    if (await copyText(authUrl)) {
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 1800);
+      toast("Link copied", { description: "Paste it into a new tab if the link won't open.", tone: "info" });
     }
   };
 
@@ -111,6 +128,8 @@ export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: (
     cancelAuth();
     setAwaiting(false);
     setVerifier("");
+    setAuthUrl(null);
+    setLinkCopied(false);
   };
 
   const disconnectAll = () => {
@@ -205,7 +224,46 @@ export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: (
           </div>
         ) : awaiting ? (
           <div>
-            <Label htmlFor="flickr-verifier">Paste the code Flickr showed you</Label>
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
+              <Label>Step 1 — authorise RSFASHIONPHOTO on Flickr</Label>
+              <div className="flex flex-wrap items-stretch gap-1.5">
+                {authUrl ? (
+                  <motion.a
+                    whileHover={{ y: -1 }}
+                    whileTap={{ scale: 0.98 }}
+                    href={authUrl}
+                    target="_blank"
+                    rel="noopener"
+                    className="flex h-10 flex-1 items-center justify-center gap-2 bg-wine-700 px-4 font-sans text-sm font-semibold uppercase tracking-[0.1em] text-wine-50 shadow-[0_2px_16px_-4px_rgba(140,42,64,0.5)] transition-colors hover:bg-wine-600 dark:bg-gilt-500 dark:text-ink dark:hover:bg-gilt-400"
+                  >
+                    <ExternalLink className="h-4 w-4" />
+                    Authorise on Flickr
+                    <span className="ml-1 h-1.5 w-1.5 animate-pulse-dot rounded-full bg-gilt-300 dark:bg-ink/70" aria-hidden />
+                  </motion.a>
+                ) : null}
+                {authUrl ? (
+                  <Button variant="outline" size="md" onClick={() => void copyLink()} aria-label="Copy the authorisation link">
+                    {linkCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                    {linkCopied ? "Copied" : "Copy link"}
+                  </Button>
+                ) : null}
+              </div>
+              <p className="mt-1.5 font-mono text-[10px] leading-relaxed text-ink/45 dark:text-paper/40">
+                {authUrl ? (
+                  <>
+                    Opens Flickr in a new tab — press{" "}
+                    <span className="text-ink/70 dark:text-paper/65">“OK, I'LL AUTHORIZE IT”</span>. If your browser refuses to open
+                    it, use Copy link and paste it into a tab yourself.
+                  </>
+                ) : (
+                  <>The page reloaded mid-connection — cancel below for a fresh link, or paste your code if Flickr already gave you one.</>
+                )}
+              </p>
+
+              <Label htmlFor="flickr-verifier" className="!mt-3">
+                Step 2 — paste the code Flickr shows you
+              </Label>
+            </motion.div>
             <div className="flex gap-1.5">
               <input
                 id="flickr-verifier"
