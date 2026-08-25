@@ -15,6 +15,32 @@
   </head>
   <body>
     <div id="root"></div>
+    <script>
+      /* Boot guard — if anything fails before React mounts (a stale cached
+         bundle, a blocked asset, a module error), show the real reason
+         instead of a blank screen. */
+      window.__rsBootError = function (msg) {
+        var root = document.getElementById("root");
+        if (!root || root.dataset.errShown) return;
+        root.dataset.errShown = "1";
+        root.innerHTML =
+          '<div style="min-height:100dvh;display:flex;align-items:center;justify-content:center;background:#121114;color:#efedea;font-family:Georgia,serif;padding:24px">' +
+          '<div style="max-width:440px;border:1px solid #3a3733;padding:32px;text-align:center">' +
+          '<p style="font-family:monospace;font-size:10px;letter-spacing:.3em;color:#b08d57;text-transform:uppercase;margin:0 0 12px">RSFASHIONPHOTO · Darkroom</p>' +
+          '<h1 style="font-style:italic;font-weight:600;font-size:26px;margin:0 0 12px">The studio hit a snag</h1>' +
+          '<p style="font-family:monospace;font-size:11px;line-height:1.7;color:#8b8781;margin:0 0 20px">' +
+          String(msg || "Something failed while the app was loading.") +
+          "</p>" +
+          '<p style="font-family:monospace;font-size:10px;color:#6b6761;margin:0">Try a hard refresh — ⌘⇧R (Mac) or Ctrl⇧R (Windows).</p>' +
+          "</div></div>";
+      };
+      window.addEventListener("error", function (e) {
+        window.__rsBootError(e.message || "A script failed to load.");
+      });
+      window.addEventListener("unhandledrejection", function (e) {
+        window.__rsBootError(e.reason && e.reason.message ? e.reason.message : "A request failed.");
+      });
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
