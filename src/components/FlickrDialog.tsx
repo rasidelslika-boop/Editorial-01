@@ -28,7 +28,16 @@ export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: (
   const [savedWorker, setSavedWorker] = useState(flickrWorkerUrl());
   const [identity, setIdentity] = useState(flickrIdentity());
 
-  const meta = useMemo(() => (gen ? buildFlickrMetadata(gen) : null), [gen, open]);
+  // Lazy + guarded — caption craft runs only while the dialog is open, and a
+  // malformed plate can never take the studio down with it.
+  const meta = useMemo(() => {
+    if (!open || !gen) return null;
+    try {
+      return buildFlickrMetadata(gen);
+    } catch {
+      return null;
+    }
+  }, [gen, open]);
 
   const saveWorker = () => {
     if (!/^https?:\/\//.test(workerInput.trim())) {

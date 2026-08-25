@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { Component, useEffect, type ErrorInfo, type ReactNode } from "react";
 import { useUIStore } from "./stores/ui";
 import { useKeyboardShortcuts } from "./hooks/useKeyboardShortcuts";
 import { Header } from "./components/Header";
