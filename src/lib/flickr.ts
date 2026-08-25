@@ -32,40 +32,93 @@ const UPLOAD_URL = "https://up.flickr.com/services/upload/";
 /*  Transport. Flickr's OAuth and upload endpoints send no CORS       */
 /*  headers, so a browser page can NEVER reach them directly — the    */
 /*  request is blocked before it leaves your machine. We try direct   */
-/*  first (future-proofing), then route through public POST-capable   */
-/*  CORS relays. Only signed params and photo bytes transit a relay;  */
-/*  your API secret never does.                                       */
+/*  first (future-proofing), then walk a chain of public CORS relays. */
+/*                                                                    */
+/*  Public relays go down, rate-limit and change policy without       */
+/*  notice, so resilience is structural:                              */
+/*   • the OAuth token calls are signed as GETs and sent through      */
+/*     GET-friendly relays (relays forward GETs far more reliably     */
+/*     than POST bodies — this is what fixes "HTTP 403" from          */
+/*     relays that gate POSTs by origin),                             */
+/*   • uploads stay POST-capable through a separate chain,            */
+/*   • every hop has a timeout and the chain reports exactly why it   */
+/*     gave up.                                                       */
+/*  Only signed params and photo bytes transit a relay; your API      */
+/*  secret never does.                                                */
 /* ------------------------------------------------------------------ */
-const CORS_RELAYS: ((url: string) => string)[] = [
-  (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+const RELAYS_GET: ((u: string) => string)[] = [
+  (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+  (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
   (u) => `https://proxy.corsfix.com/?${encodeURIComponent(u)}`,
+  (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
 ];
 
-async function transportFetch(url: string, init: RequestInit): Promise<Response> {
-  // 1. Direct — succeeds only if Flickr ever sends CORS headers.
+const RELAYS_POST: ((u: string) => string)[] = [
+  (u) => `https://proxy.corsfix.com/?${encodeURIComponent(u)}`,
+  (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+  (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+];
+
+async function guardedFetch(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
   try {
-    return await fetch(url, init);
-  } catch {
-    /* blocked — try relays */
+    return await fetch(url, { ...init, signal: ctrl.signal });
+  } finally {
+    clearTimeout(timer);
   }
-  // 2. Public CORS relays, in order — retrying the primary once, since these
-  //    services rate-limit and flap. A thrown fetch means the relay is down;
-  //    any HTTP response (even an error) is handed back for inspection.
-  const attempts: ((u: string) => string)[] = [CORS_RELAYS[0], ...CORS_RELAYS, CORS_RELAYS[0]];
-  let lastError: unknown = null;
-  for (const relay of attempts) {
+}
+
+/** True for statuses worth handing back to the caller for inspection. */
+function usableStatus(status: number): boolean {
+  return status === 200 || status === 400 || status === 401;
+}
+
+const RELAY_DOWN_MSG =
+  "None of the public CORS relays could reach Flickr right now. Public relays go down or rate-limit from time to time — wait a moment and try again.";
+
+/** GET transport — used by the signed OAuth token calls. */
+async function transportGet(url: string): Promise<Response> {
+  try {
+    const direct = await guardedFetch(url, { method: "GET" }, 10_000);
+    if (usableStatus(direct.status)) return direct;
+  } catch {
+    /* direct is blocked by CORS — expected */
+  }
+  let lastStatus = "";
+  for (const relay of RELAYS_GET) {
     try {
-      return await fetch(relay(url), init);
-    } catch (err) {
-      lastError = err;
+      const res = await guardedFetch(relay(url), { method: "GET" }, 15_000);
+      if (usableStatus(res.status)) return res;
+      lastStatus = `HTTP ${res.status}`;
+    } catch {
+      lastStatus = "unreachable";
       continue;
     }
   }
-  throw new Error(
-    "Flickr's endpoints block direct browser calls, and the public CORS relays are unreachable right now. " +
-      "They come and go — wait a moment and try again." +
-      (lastError instanceof Error ? ` (${lastError.message})` : "")
-  );
+  throw new Error(RELAY_DOWN_MSG + (lastStatus ? ` (${lastStatus})` : ""));
+}
+
+/** POST transport — used for the multipart upload. */
+async function transportFetch(url: string, init: RequestInit): Promise<Response> {
+  try {
+    const direct = await guardedFetch(url, init, 30_000);
+    if (usableStatus(direct.status)) return direct;
+  } catch {
+    /* direct is blocked by CORS — expected */
+  }
+  let lastStatus = "";
+  for (const relay of RELAYS_POST) {
+    try {
+      const res = await guardedFetch(relay(url), init, 60_000);
+      if (usableStatus(res.status)) return res;
+      lastStatus = `HTTP ${res.status}`;
+    } catch {
+      lastStatus = "unreachable";
+      continue;
+    }
+  }
+  throw new Error(RELAY_DOWN_MSG + (lastStatus ? ` (${lastStatus})` : ""));
 }
 
 function lsGet(k: string): string | null {
@@ -220,21 +273,23 @@ function describeOAuthProblem(resp: Record<string, string>): string | null {
   return hint ? `${hint} (Flickr code: ${problem})` : `Flickr returned an OAuth error: ${problem}.`;
 }
 
-async function postSigned(
+/**
+ * OAuth 1.0a allows the token calls as signed GETs — and a signed GET whose
+ * parameters live in the query string survives public CORS relays far better
+ * than a POST body (several relays strip, gate or 403 POSTs by origin, which
+ * is exactly the "HTTP 403" this flow hit).
+ */
+async function getSigned(
   url: string,
   params: Record<string, string>,
   consumerSecret: string,
   tokenSecret: string
 ): Promise<Record<string, string>> {
-  const signed = await sign("POST", url, params, consumerSecret, tokenSecret);
-  const body = Object.entries(signed)
+  const signed = await sign("GET", url, params, consumerSecret, tokenSecret);
+  const query = Object.entries(signed)
     .map(([k, v]) => `${percentEncode(k)}=${percentEncode(v)}`)
     .join("&");
-  const res = await transportFetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/x-www-form-urlencoded" },
-    body,
-  });
+  const res = await transportGet(`${url}?${query}`);
   const text = await res.text();
 
   // A public relay that's down or rate-limited returns its own HTML error page
@@ -271,7 +326,7 @@ export async function beginAuth(): Promise<{ authUrl: string }> {
   const secret = lsGet(LS.secret);
   if (!key || !secret) throw new Error("Enter your API key and secret first.");
 
-  const resp = await postSigned(
+  const resp = await getSigned(
     REQUEST_TOKEN_URL,
     {
       oauth_callback: "oob",
@@ -306,7 +361,7 @@ export async function completeAuth(verifier: string): Promise<{ user: string }> 
   if (!key || !secret) throw new Error("Enter your API key and secret first.");
   if (!reqToken || !reqSecret) throw new Error("Press “Connect to Flickr” first, then paste the code it shows.");
 
-  const resp = await postSigned(
+  const resp = await getSigned(
     ACCESS_TOKEN_URL,
     {
       oauth_consumer_key: key,
