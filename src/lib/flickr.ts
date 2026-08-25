@@ -48,16 +48,23 @@ async function transportFetch(url: string, init: RequestInit): Promise<Response>
   } catch {
     /* blocked — try relays */
   }
-  // 2. Public CORS relays, in order.
-  for (const relay of CORS_RELAYS) {
+  // 2. Public CORS relays, in order — retrying the primary once, since these
+  //    services rate-limit and flap. A thrown fetch means the relay is down;
+  //    any HTTP response (even an error) is handed back for inspection.
+  const attempts: ((u: string) => string)[] = [CORS_RELAYS[0], ...CORS_RELAYS, CORS_RELAYS[0]];
+  let lastError: unknown = null;
+  for (const relay of attempts) {
     try {
       return await fetch(relay(url), init);
-    } catch {
+    } catch (err) {
+      lastError = err;
       continue;
     }
   }
   throw new Error(
-    "Flickr's endpoints block direct browser calls, and the public relays are unreachable right now. Try again in a moment — or deploy the bundled relay worker (worker/flickr-relay.js) for a guaranteed connection; the README walks through it."
+    "Flickr's endpoints block direct browser calls, and the public CORS relays are unreachable right now. " +
+      "They come and go — wait a moment and try again." +
+      (lastError instanceof Error ? ` (${lastError.message})` : "")
   );
 }
 
@@ -182,6 +189,37 @@ function parseFormEncoded(text: string): Record<string, string> {
   return out;
 }
 
+/** Flickr's machine codes, translated into something a photographer can act on. */
+const OAUTH_PROBLEM_HINTS: Record<string, string> = {
+  consumer_key_unknown:
+    "Flickr doesn't recognise that API key. Re-check it in the Flickr App Garden — it may be mistyped, revoked, or belong to a deleted app.",
+  consumer_key_rejected:
+    "That API key has been disabled or lacks permission for this. Verify it in the Flickr App Garden.",
+  signature_invalid:
+    "Flickr rejected the request signature. This usually means the request was altered in transit by a public relay — press Connect again to retry. If it persists, your device clock may be off.",
+  signature_method_rejected: "Flickr rejected the signing method.",
+  timestamp_refused:
+    "Your device's clock is too far from Flickr's time. Sync your system clock and retry.",
+  nonce_used: "A duplicate request was detected — press Connect again to retry.",
+  parameter_absent:
+    "A required parameter never arrived — the relay likely dropped the request body. Wait a moment and retry.",
+  parameter_rejected: "Flickr rejected a parameter in the request.",
+  token_rejected: "That token was rejected — start the connection over from the top.",
+  token_expired: "The token expired — start the connection over from the top.",
+  token_not_authorized: "The token wasn't authorised — reconnect and approve it again.",
+  callback_uri_invalid:
+    "Your app's callback settings reject this flow. In the Flickr App Garden, leave the callback URL blank so it runs out-of-band.",
+  permission_unknown: "The requested permission isn't valid.",
+  permission_denied: "The app doesn't have the required permission.",
+};
+
+function describeOAuthProblem(resp: Record<string, string>): string | null {
+  const problem = resp.oauth_problem;
+  if (!problem) return null;
+  const hint = OAUTH_PROBLEM_HINTS[problem];
+  return hint ? `${hint} (Flickr code: ${problem})` : `Flickr returned an OAuth error: ${problem}.`;
+}
+
 async function postSigned(
   url: string,
   params: Record<string, string>,
@@ -198,7 +236,22 @@ async function postSigned(
     body,
   });
   const text = await res.text();
-  return parseFormEncoded(text);
+
+  // A public relay that's down or rate-limited returns its own HTML error page
+  // instead of Flickr's form-encoded reply — call that out, don't blame Flickr.
+  const trimmed = text.trim();
+  const isHtml = trimmed.startsWith("<") || (res.headers.get("content-type") ?? "").includes("text/html");
+  if (isHtml || (!res.ok && !trimmed.includes("oauth_"))) {
+    throw new Error(
+      `The connection relay returned an error page, not Flickr (HTTP ${res.status}). Public relays go down or rate-limit from time to time — wait a moment and press Connect again.`
+    );
+  }
+
+  const parsed = parseFormEncoded(text);
+  const problem = describeOAuthProblem(parsed);
+  if (problem) throw new Error(problem);
+  if (!res.ok) throw new Error(`Flickr responded with HTTP ${res.status}.`);
+  return parsed;
 }
 
 /* ------------------------------- Auth flow ------------------------------- */
@@ -233,7 +286,11 @@ export async function beginAuth(): Promise<{ authUrl: string }> {
   );
 
   if (!resp.oauth_token || !resp.oauth_token_secret) {
-    throw new Error("Flickr rejected the request — double-check your API key and secret.");
+    const problem = describeOAuthProblem(resp);
+    throw new Error(
+      problem ??
+        "Flickr sent back an empty or unreadable reply — that's usually the public relay, not your key. Wait a moment and press Connect again. If it keeps happening, re-check your key and secret in the Flickr App Garden."
+    );
   }
   lsSet(LS.reqToken, resp.oauth_token);
   lsSet(LS.reqSecret, resp.oauth_token_secret);
@@ -265,7 +322,10 @@ export async function completeAuth(verifier: string): Promise<{ user: string }> 
   );
 
   if (!resp.oauth_token || !resp.oauth_token_secret) {
-    throw new Error("That code didn't work — copy the 9-digit code Flickr displayed and try again.");
+    const problem = describeOAuthProblem(resp);
+    throw new Error(
+      problem ?? "That code didn't work — copy the 9-digit code Flickr displayed and try again."
+    );
   }
   lsSet(LS.token, resp.oauth_token);
   lsSet(LS.tokenSecret, resp.oauth_token_secret);
