@@ -1,11 +1,12 @@
 import { motion } from "framer-motion";
-import { Check, Copy, ExternalLink, KeyRound, Link2, Loader2, LogOut, ShieldCheck } from "lucide-react";
+import { Check, Copy, ExternalLink, KeyRound, Link2, Loader2, LogOut, PlugZap, ShieldCheck } from "lucide-react";
 import QRCode from "react-qr-code";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   beginAuth,
   buildFlickrMetadata,
   cancelAuth,
+  checkLocalProxy,
   clearCredentials,
   completeAuth,
   disconnect,
@@ -15,6 +16,7 @@ import {
   storeCredentials,
   storedKey,
 } from "../lib/flickr";
+import proxyScript from "../../server/flickr-proxy.mjs?raw";
 import { useUIStore } from "../stores/ui";
 import type { Generation } from "../types";
 import { cn, copyText } from "../lib/utils";
@@ -42,6 +44,45 @@ export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: (
   const [busy, setBusy] = useState<"connect" | "verify" | null>(null);
   const [authUrl, setAuthUrl] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [proxyUp, setProxyUp] = useState(false);
+  const [scriptCopied, setScriptCopied] = useState(false);
+  const [cmdCopied, setCmdCopied] = useState(false);
+
+  // Live status lamp for the bundled local proxy — re-probes while the dialog
+  // is open so the moment it's running in Terminal, this turns green and the
+  // next "Connect" uses it.
+  useEffect(() => {
+    if (!open) return;
+    let stopped = false;
+    const probe = async () => {
+      const up = await checkLocalProxy();
+      if (!stopped) setProxyUp(up);
+    };
+    void probe();
+    const id = window.setInterval(probe, 3000);
+    return () => {
+      stopped = true;
+      window.clearInterval(id);
+    };
+  }, [open]);
+
+  const copyProxyScript = async () => {
+    if (await copyText(proxyScript)) {
+      setScriptCopied(true);
+      setTimeout(() => setScriptCopied(false), 1800);
+      toast("Proxy script copied", { description: "Now copy the run command and paste it into Terminal.", tone: "success" });
+    }
+  };
+
+  const copyRunCommand = async () => {
+    const cmd =
+      "mkdir -p ~/rsfashionphoto && pbpaste > ~/rsfashionphoto/flickr-proxy.mjs && node ~/rsfashionphoto/flickr-proxy.mjs";
+    if (await copyText(cmd)) {
+      setCmdCopied(true);
+      setTimeout(() => setCmdCopied(false), 1800);
+      toast("Run command copied", { description: "Paste it into Terminal — the proxy will start on 127.0.0.1:7427.", tone: "success" });
+    }
+  };
 
   // Preview only while open, and never let a bad plate throw during render.
   const meta = useMemo(() => {
@@ -331,6 +372,64 @@ export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: (
               Connect to Flickr
             </Button>
           </div>
+        )}
+      </div>
+
+      {/* Local proxy — the guaranteed connection */}
+      <div className="mt-3 border border-ink/12 p-3.5 dark:border-paper/12">
+        <div className="flex items-center justify-between gap-3">
+          <p className="flex items-center gap-2 font-mono text-[10px] font-bold uppercase tracking-[0.2em] text-wine-700 dark:text-gilt-400">
+            <PlugZap className="h-3.5 w-3.5" />
+            Local proxy · guaranteed connection
+          </p>
+          <span
+            className={cn(
+              "flex items-center gap-1.5 rounded-sm border px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.14em]",
+              proxyUp
+                ? "border-gilt-500/60 bg-gilt-500/10 text-gilt-600 dark:text-gilt-300"
+                : "border-ink/20 text-ink/45 dark:border-paper/20 dark:text-paper/40"
+            )}
+          >
+            <span className={cn("h-1.5 w-1.5 rounded-full", proxyUp ? "animate-pulse-dot bg-gilt-500" : "bg-ink/30 dark:bg-paper/25")} aria-hidden />
+            {proxyUp ? "Running" : "Not running"}
+          </span>
+        </div>
+
+        {proxyUp ? (
+          <p className="mt-2 font-mono text-[10px] leading-relaxed text-gilt-600 dark:text-gilt-300">
+            The proxy is live on 127.0.0.1:7427 — press <span className="font-bold">Connect to Flickr</span> and it will route
+            through it. Public relays are bypassed entirely.
+          </p>
+        ) : (
+          <>
+            <p className="mt-2 font-mono text-[10px] leading-relaxed text-ink/55 dark:text-paper/50">
+              Public relays come and go. For a connection that always works, run the bundled proxy on your Mac — it takes three
+              steps and about ten seconds:
+            </p>
+            <ol className="mt-2.5 space-y-2">
+              <li className="flex items-start gap-2.5">
+                <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-ink font-mono text-[9px] font-bold text-paper dark:bg-paper dark:text-ink">1</span>
+                <Button variant="outline" size="sm" onClick={() => void copyProxyScript()} className="!h-7">
+                  {scriptCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  {scriptCopied ? "Script copied" : "Copy the proxy script"}
+                </Button>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-ink font-mono text-[9px] font-bold text-paper dark:bg-paper dark:text-ink">2</span>
+                <Button variant="outline" size="sm" onClick={() => void copyRunCommand()} className="!h-7">
+                  {cmdCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                  {cmdCopied ? "Command copied" : "Copy the run command"}
+                </Button>
+              </li>
+              <li className="flex items-start gap-2.5">
+                <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-ink font-mono text-[9px] font-bold text-paper dark:bg-paper dark:text-ink">3</span>
+                <p className="pt-1 font-mono text-[10px] leading-relaxed text-ink/55 dark:text-paper/50">
+                  Open <span className="font-bold text-ink dark:text-paper">Terminal</span> and paste the command (⌘V, Return).
+                  It saves the script and starts the proxy. This lamp turns green the moment it's up — then press Connect.
+                </p>
+              </li>
+            </ol>
+          </>
         )}
       </div>
 

@@ -66,9 +66,7 @@ function usableStatus(status: number): boolean {
 
 let localProxyState: boolean | null = null;
 
-/** One quick probe per session — is the bundled local proxy running? */
-async function probeLocalProxy(): Promise<boolean> {
-  if (localProxyState !== null) return localProxyState;
+async function doProbeLocalProxy(): Promise<boolean> {
   try {
     const ctrl = new AbortController();
     const timer = setTimeout(() => ctrl.abort(), 1500);
@@ -77,10 +75,26 @@ async function probeLocalProxy(): Promise<boolean> {
       signal: ctrl.signal,
     });
     clearTimeout(timer);
-    localProxyState = res.status === 204 || res.ok;
+    return res.status === 204 || res.ok;
   } catch {
-    localProxyState = false;
+    return false;
   }
+}
+
+/** One quick probe per session — is the bundled local proxy running? */
+async function probeLocalProxy(): Promise<boolean> {
+  if (localProxyState !== null) return localProxyState;
+  localProxyState = await doProbeLocalProxy();
+  return localProxyState;
+}
+
+/**
+ * Fresh probe that also refreshes the session cache — used by the dialog's
+ * live status lamp so a proxy started in Terminal mid-session is picked up
+ * by the very next Connect click.
+ */
+export async function checkLocalProxy(): Promise<boolean> {
+  localProxyState = await doProbeLocalProxy();
   return localProxyState;
 }
 
@@ -201,7 +215,7 @@ async function signedFlickrRequest(
   throw new Error(
     "Every transport hop failed: " +
       failures.join(" · ") +
-      ". Public relays come and go — retry in a moment. For a guaranteed connection, run the bundled local proxy: node server/flickr-proxy.mjs"
+      ". Public relays come and go. For a connection that always works, open the Flickr panel and follow the “Local proxy” steps — it takes about ten seconds."
   );
 }
 
@@ -235,7 +249,7 @@ async function transportFetch(url: string, init: RequestInit): Promise<Response>
   throw new Error(
     "Couldn't reach Flickr's upload endpoint: " +
       failures.join(" · ") +
-      ". For a guaranteed connection, run the bundled local proxy: node server/flickr-proxy.mjs"
+      ". For a connection that always works, open the Flickr panel and follow the “Local proxy” steps."
   );
 }
 
