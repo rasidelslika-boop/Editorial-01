@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import { Check, Copy, ExternalLink, KeyRound, Link2, Loader2, LogOut, ShieldCheck } from "lucide-react";
+import QRCode from "react-qr-code";
 import { useMemo, useState } from "react";
 import {
   beginAuth,
@@ -226,41 +227,71 @@ export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: (
           <div>
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
               <Label>Step 1 — authorise RSFASHIONPHOTO on Flickr</Label>
-              <div className="flex flex-wrap items-stretch gap-1.5">
-                {authUrl ? (
-                  <motion.a
-                    whileHover={{ y: -1 }}
-                    whileTap={{ scale: 0.98 }}
-                    href={authUrl}
-                    target="_blank"
-                    rel="noopener"
-                    className="flex h-10 flex-1 items-center justify-center gap-2 bg-wine-700 px-4 font-sans text-sm font-semibold uppercase tracking-[0.1em] text-wine-50 shadow-[0_2px_16px_-4px_rgba(140,42,64,0.5)] transition-colors hover:bg-wine-600 dark:bg-gilt-500 dark:text-ink dark:hover:bg-gilt-400"
-                  >
-                    <ExternalLink className="h-4 w-4" />
-                    Authorise on Flickr
-                    <span className="ml-1 h-1.5 w-1.5 animate-pulse-dot rounded-full bg-gilt-300 dark:bg-ink/70" aria-hidden />
-                  </motion.a>
-                ) : null}
-                {authUrl ? (
-                  <Button variant="outline" size="md" onClick={() => void copyLink()} aria-label="Copy the authorisation link">
-                    {linkCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-                    {linkCopied ? "Copied" : "Copy link"}
-                  </Button>
-                ) : null}
-              </div>
-              <p className="mt-1.5 font-mono text-[10px] leading-relaxed text-ink/45 dark:text-paper/40">
-                {authUrl ? (
-                  <>
-                    Opens Flickr in a new tab — press{" "}
-                    <span className="text-ink/70 dark:text-paper/65">“OK, I'LL AUTHORIZE IT”</span>. If your browser refuses to open
-                    it, use Copy link and paste it into a tab yourself.
-                  </>
-                ) : (
-                  <>The page reloaded mid-connection — cancel below for a fresh link, or paste your code if Flickr already gave you one.</>
-                )}
-              </p>
 
-              <Label htmlFor="flickr-verifier" className="!mt-3">
+              {authUrl ? (
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  {/* QR tile — scanning happens on your phone, so no browser policy can block it. */}
+                  <motion.div
+                    initial={{ opacity: 0, scale: 0.92 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ delay: 0.08, type: "spring", stiffness: 380, damping: 26 }}
+                    className="flex shrink-0 flex-col items-center gap-1.5 self-start border border-ink/15 bg-[#f5f4f0] p-2.5 dark:border-paper/20"
+                  >
+                    <QRCode value={authUrl} size={112} bgColor="#f5f4f0" fgColor="#121114" level="M" />
+                    <p className="font-mono text-[8.5px] font-bold uppercase tracking-[0.18em] text-ink/50">Scan · phone</p>
+                  </motion.div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex flex-wrap items-stretch gap-1.5">
+                      <motion.a
+                        whileHover={{ y: -1 }}
+                        whileTap={{ scale: 0.98 }}
+                        href={authUrl}
+                        target="_blank"
+                        rel="noopener"
+                        className="flex h-10 flex-1 items-center justify-center gap-2 bg-wine-700 px-4 font-sans text-sm font-semibold uppercase tracking-[0.1em] text-wine-50 shadow-[0_2px_16px_-4px_rgba(140,42,64,0.5)] transition-colors hover:bg-wine-600 dark:bg-gilt-500 dark:text-ink dark:hover:bg-gilt-400"
+                      >
+                        <ExternalLink className="h-4 w-4" />
+                        Authorise on Flickr
+                        <span className="ml-1 h-1.5 w-1.5 animate-pulse-dot rounded-full bg-gilt-300 dark:bg-ink/70" aria-hidden />
+                      </motion.a>
+                      <Button variant="outline" size="md" onClick={() => void copyLink()} aria-label="Copy the authorisation link">
+                        {linkCopied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+                        {linkCopied ? "Copied" : "Copy link"}
+                      </Button>
+                    </div>
+
+                    <ol className="mt-2.5 space-y-1.5">
+                      <li className="flex gap-2 font-mono text-[10px] leading-relaxed text-ink/55 dark:text-paper/50">
+                        <span className="font-bold text-wine-700 dark:text-gilt-400">A.</span>
+                        Scan the QR with your phone — or open a{" "}
+                        <span className="text-ink/80 dark:text-paper/75">fresh browser tab</span> (Ctrl/Cmd+T) and paste the copied
+                        link into its <span className="text-ink/80 dark:text-paper/75">address bar</span>.
+                      </li>
+                      <li className="flex gap-2 font-mono text-[10px] leading-relaxed text-ink/55 dark:text-paper/50">
+                        <span className="font-bold text-wine-700 dark:text-gilt-400">B.</span>
+                        On Flickr, press <span className="text-ink/80 dark:text-paper/75">“OK, I'LL AUTHORIZE IT”</span>.
+                      </li>
+                      <li className="flex gap-2 font-mono text-[10px] leading-relaxed text-ink/55 dark:text-paper/50">
+                        <span className="font-bold text-wine-700 dark:text-gilt-400">C.</span>
+                        Bring the 9-digit code back here ↓
+                      </li>
+                    </ol>
+
+                    <p className="mt-2 border-l-2 border-gilt-500/60 pl-2 font-mono text-[9.5px] leading-relaxed text-ink/40 dark:text-paper/35">
+                      Why the detour? Your browser seals this page with a Cross-Origin-Opener-Policy, so links it opens get
+                      blocked — the QR and a fresh-tab paste sidestep the seal entirely.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <p className="mt-2 font-mono text-[10px] leading-relaxed text-ink/50 dark:text-paper/45">
+                  The page reloaded mid-connection — cancel below for a fresh link, or paste your code if Flickr already gave you
+                  one.
+                </p>
+              )}
+
+              <Label htmlFor="flickr-verifier" className="!mt-3.5">
                 Step 2 — paste the code Flickr shows you
               </Label>
             </motion.div>
