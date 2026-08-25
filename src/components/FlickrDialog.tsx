@@ -16,7 +16,7 @@ import {
   storeCredentials,
   storedKey,
 } from "../lib/flickr";
-import proxyScript from "../../server/flickr-proxy.mjs?raw";
+import { FLICKR_PROXY_SCRIPT } from "../lib/proxyScript";
 import { useUIStore } from "../stores/ui";
 import type { Generation } from "../types";
 import { cn, copyText } from "../lib/utils";
@@ -67,7 +67,7 @@ export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: (
   }, [open]);
 
   const copyProxyScript = async () => {
-    if (await copyText(proxyScript)) {
+    if (await copyText(FLICKR_PROXY_SCRIPT)) {
       setScriptCopied(true);
       setTimeout(() => setScriptCopied(false), 1800);
       toast("Proxy script copied", { description: "Now copy the run command and paste it into Terminal.", tone: "success" });
