@@ -16,7 +16,7 @@ import {
   storeCredentials,
   storedKey,
 } from "../lib/flickr";
-import { FLICKR_PROXY_SCRIPT } from "../lib/proxyScript";
+import { FLICKR_PROXY_SCRIPT, proxyInstallCommand } from "../lib/proxyScript";
 import { useUIStore } from "../stores/ui";
 import type { Generation } from "../types";
 import { cn, copyText } from "../lib/utils";
@@ -66,21 +66,26 @@ export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: (
     };
   }, [open]);
 
+  /**
+   * ONE clipboard operation: the command embeds the whole script, so there's
+   * nothing to copy second and nothing to get out of order.
+   */
+  const copyInstaller = async () => {
+    if (await copyText(proxyInstallCommand())) {
+      setCmdCopied(true);
+      setTimeout(() => setCmdCopied(false), 1800);
+      toast("Install command copied", {
+        description: "Open Terminal and paste it (⌘V, Return) — the proxy starts itself.",
+        tone: "success",
+      });
+    }
+  };
+
   const copyProxyScript = async () => {
     if (await copyText(FLICKR_PROXY_SCRIPT)) {
       setScriptCopied(true);
       setTimeout(() => setScriptCopied(false), 1800);
-      toast("Proxy script copied", { description: "Now copy the run command and paste it into Terminal.", tone: "success" });
-    }
-  };
-
-  const copyRunCommand = async () => {
-    const cmd =
-      "mkdir -p ~/rsfashionphoto && pbpaste > ~/rsfashionphoto/flickr-proxy.mjs && node ~/rsfashionphoto/flickr-proxy.mjs";
-    if (await copyText(cmd)) {
-      setCmdCopied(true);
-      setTimeout(() => setCmdCopied(false), 1800);
-      toast("Run command copied", { description: "Paste it into Terminal — the proxy will start on 127.0.0.1:7427.", tone: "success" });
+      toast("Script copied", { description: "For saving manually — most people only need the install command.", tone: "info" });
     }
   };
 
@@ -403,32 +408,43 @@ export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: (
         ) : (
           <>
             <p className="mt-2 font-mono text-[10px] leading-relaxed text-ink/55 dark:text-paper/50">
-              Public relays come and go. For a connection that always works, run the bundled proxy on your Mac — it takes three
-              steps and about ten seconds:
+              Public relays come and go. For a connection that always works, run the bundled proxy on your Mac — one copy, one
+              paste, about ten seconds:
             </p>
             <ol className="mt-2.5 space-y-2">
               <li className="flex items-start gap-2.5">
                 <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-ink font-mono text-[9px] font-bold text-paper dark:bg-paper dark:text-ink">1</span>
-                <Button variant="outline" size="sm" onClick={() => void copyProxyScript()} className="!h-7">
-                  {scriptCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                  {scriptCopied ? "Script copied" : "Copy the proxy script"}
-                </Button>
+                <div className="min-w-0">
+                  <Button variant="outline" size="sm" onClick={() => void copyInstaller()} className="!h-7">
+                    {cmdCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                    {cmdCopied ? "Install command copied" : "Copy the install command"}
+                  </Button>
+                  <p className="mt-1 font-mono text-[9px] leading-relaxed text-ink/40 dark:text-paper/35">
+                    The whole script is embedded in the command — nothing else to copy.
+                  </p>
+                </div>
               </li>
               <li className="flex items-start gap-2.5">
                 <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-ink font-mono text-[9px] font-bold text-paper dark:bg-paper dark:text-ink">2</span>
-                <Button variant="outline" size="sm" onClick={() => void copyRunCommand()} className="!h-7">
-                  {cmdCopied ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
-                  {cmdCopied ? "Command copied" : "Copy the run command"}
-                </Button>
+                <p className="pt-1 font-mono text-[10px] leading-relaxed text-ink/55 dark:text-paper/50">
+                  Open <span className="font-bold text-ink dark:text-paper">Terminal</span> and paste once (⌘V, Return). It saves
+                  the script and starts the proxy on 127.0.0.1:7427.
+                </p>
               </li>
               <li className="flex items-start gap-2.5">
                 <span className="mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full bg-ink font-mono text-[9px] font-bold text-paper dark:bg-paper dark:text-ink">3</span>
                 <p className="pt-1 font-mono text-[10px] leading-relaxed text-ink/55 dark:text-paper/50">
-                  Open <span className="font-bold text-ink dark:text-paper">Terminal</span> and paste the command (⌘V, Return).
-                  It saves the script and starts the proxy. This lamp turns green the moment it's up — then press Connect.
+                  This lamp turns green the moment it's up — then press{" "}
+                  <span className="font-bold text-ink dark:text-paper">Connect to Flickr</span>.
                 </p>
               </li>
             </ol>
+            <button
+              onClick={() => void copyProxyScript()}
+              className="mt-2 font-mono text-[9px] uppercase tracking-[0.14em] text-ink/40 underline-offset-4 hover:text-ink hover:underline dark:text-paper/35 dark:hover:text-paper"
+            >
+              {scriptCopied ? "Script copied ✓" : "Just want the script file? Copy it"}
+            </button>
           </>
         )}
       </div>

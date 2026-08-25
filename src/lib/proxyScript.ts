@@ -8,6 +8,20 @@
  *
  * Keep `server/flickr-proxy.mjs` byte-identical to this.
  */
+
+/**
+ * A single paste-and-run installer for Terminal: writes the script via a
+ * quoted heredoc (no shell expansion, safe with backticks/quotes) and then
+ * starts it. One clipboard operation — nothing can get out of order.
+ */
+export function proxyInstallCommand(): string {
+  return (
+    `mkdir -p ~/rsfashionphoto && cat > ~/rsfashionphoto/flickr-proxy.mjs <<'RSF_PROXY_EOF'\n` +
+    FLICKR_PROXY_SCRIPT.trimEnd() +
+    `\nRSF_PROXY_EOF\nnode ~/rsfashionphoto/flickr-proxy.mjs`
+  );
+}
+
 export const FLICKR_PROXY_SCRIPT = `/**
  * RSFASHIONPHOTO — local Flickr transport proxy (zero dependencies).
  *
