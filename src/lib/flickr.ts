@@ -47,7 +47,11 @@ const UPLOAD_URL = "https://up.flickr.com/services/upload/";
 /*  Only signed params and photo bytes transit any hop; your API      */
 /*  secret never does.                                                */
 /* ------------------------------------------------------------------ */
-const LOCAL_PROXY = "http://127.0.0.1:7427/proxy";
+const LOCAL_HOSTS = ["http://localhost:7427", "http://127.0.0.1:7427"];
+
+/** Base of the proxy that answered the last probe (or the default). */
+let localProxyBase = LOCAL_HOSTS[0];
+const proxyUrl = (target: string) => `${localProxyBase}/proxy?url=${encodeURIComponent(target)}`;
 
 async function guardedFetch(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   const ctrl = new AbortController();
