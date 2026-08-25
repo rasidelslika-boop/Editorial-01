@@ -31,33 +31,23 @@ const UPLOAD_URL = "https://up.flickr.com/services/upload/";
 /* ------------------------------------------------------------------ */
 /*  Transport. Flickr's OAuth and upload endpoints send no CORS       */
 /*  headers, so a browser page can NEVER reach them directly — the    */
-/*  request is blocked before it leaves your machine. We try direct   */
-/*  first (future-proofing), then walk a chain of public CORS relays. */
+/*  request is blocked before it leaves your machine.                 */
 /*                                                                    */
-/*  Public relays go down, rate-limit and change policy without       */
-/*  notice, so resilience is structural:                              */
-/*   • the OAuth token calls are signed as GETs and sent through      */
-/*     GET-friendly relays (relays forward GETs far more reliably     */
-/*     than POST bodies — this is what fixes "HTTP 403" from          */
-/*     relays that gate POSTs by origin),                             */
-/*   • uploads stay POST-capable through a separate chain,            */
-/*   • every hop has a timeout and the chain reports exactly why it   */
-/*     gave up.                                                       */
-/*  Only signed params and photo bytes transit a relay; your API      */
+/*  The guaranteed path is the bundled LOCAL PROXY (the same trick    */
+/*  every full-stack builder uses — a tiny server in front of         */
+/*  Flickr). Run it once:                                             */
+/*                                                                    */
+/*      node server/flickr-proxy.mjs                                  */
+/*                                                                    */
+/*  The studio auto-detects it at 127.0.0.1:7427 and prefers it over  */
+/*  everything. Without it, we walk a matrix of public relays —       */
+/*  re-signing per hop (method × relay), treating garbage replies as  */
+/*  "next hop" and only stopping on a genuine Flickr verdict.         */
+/*                                                                    */
+/*  Only signed params and photo bytes transit any hop; your API      */
 /*  secret never does.                                                */
 /* ------------------------------------------------------------------ */
-const RELAYS_GET: ((u: string) => string)[] = [
-  (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-  (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
-  (u) => `https://proxy.corsfix.com/?${encodeURIComponent(u)}`,
-  (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
-];
-
-const RELAYS_POST: ((u: string) => string)[] = [
-  (u) => `https://proxy.corsfix.com/?${encodeURIComponent(u)}`,
-  (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
-  (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
-];
+const LOCAL_PROXY = "http://127.0.0.1:7427/proxy";
 
 async function guardedFetch(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
   const ctrl = new AbortController();
@@ -74,32 +64,148 @@ function usableStatus(status: number): boolean {
   return status === 200 || status === 400 || status === 401;
 }
 
-const RELAY_DOWN_MSG =
-  "None of the public CORS relays could reach Flickr right now. Public relays go down or rate-limit from time to time — wait a moment and try again.";
+let localProxyState: boolean | null = null;
 
-/** GET transport — used by the signed OAuth token calls. */
-async function transportGet(url: string): Promise<Response> {
+/** One quick probe per session — is the bundled local proxy running? */
+async function probeLocalProxy(): Promise<boolean> {
+  if (localProxyState !== null) return localProxyState;
   try {
-    const direct = await guardedFetch(url, { method: "GET" }, 10_000);
-    if (usableStatus(direct.status)) return direct;
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), 1500);
+    const res = await fetch(`${LOCAL_PROXY}?url=${encodeURIComponent(REQUEST_TOKEN_URL)}`, {
+      method: "OPTIONS",
+      signal: ctrl.signal,
+    });
+    clearTimeout(timer);
+    localProxyState = res.status === 204 || res.ok;
   } catch {
-    /* direct is blocked by CORS — expected */
+    localProxyState = false;
   }
-  let lastStatus = "";
-  for (const relay of RELAYS_GET) {
-    try {
-      const res = await guardedFetch(relay(url), { method: "GET" }, 15_000);
-      if (usableStatus(res.status)) return res;
-      lastStatus = `HTTP ${res.status}`;
-    } catch {
-      lastStatus = "unreachable";
-      continue;
-    }
-  }
-  throw new Error(RELAY_DOWN_MSG + (lastStatus ? ` (${lastStatus})` : ""));
+  return localProxyState;
 }
 
-/** POST transport — used for the multipart upload. */
+interface Hop {
+  label: string;
+  method: "GET" | "POST";
+  wrap: (u: string) => string;
+  timeout: number;
+}
+
+const PUBLIC_HOPS: Hop[] = [
+  {
+    label: "corsfix (POST)",
+    method: "POST",
+    wrap: (u) => `https://proxy.corsfix.com/?${encodeURIComponent(u)}`,
+    timeout: 20_000,
+  },
+  {
+    label: "corsproxy.io (POST)",
+    method: "POST",
+    wrap: (u) => `https://corsproxy.io/?url=${encodeURIComponent(u)}`,
+    timeout: 20_000,
+  },
+  {
+    label: "allorigins (GET)",
+    method: "GET",
+    wrap: (u) => `https://api.allorigins.win/raw?url=${encodeURIComponent(u)}`,
+    timeout: 15_000,
+  },
+  {
+    label: "codetabs (GET)",
+    method: "GET",
+    wrap: (u) => `https://api.codetabs.com/v1/proxy?quest=${encodeURIComponent(u)}`,
+    timeout: 15_000,
+  },
+];
+
+async function buildHops(): Promise<Hop[]> {
+  if (await probeLocalProxy()) {
+    return [
+      { label: "local proxy", method: "POST", wrap: (u) => `${LOCAL_PROXY}?url=${encodeURIComponent(u)}`, timeout: 25_000 },
+      ...PUBLIC_HOPS,
+    ];
+  }
+  return PUBLIC_HOPS;
+}
+
+/**
+ * One signed exchange with Flickr, hopping across (method × relay) until a
+ * real Flickr reply arrives. Every hop gets a FRESH signature (nonce and
+ * timestamp are part of the signature, so they must be regenerated per
+ * attempt). Garbage — HTML error pages, empty bodies, relay 4xx/5xx — is
+ * logged and the next hop is tried; a genuine `oauth_problem` stops the
+ * whole chain immediately with Flickr's translated verdict.
+ */
+async function signedFlickrRequest(
+  url: string,
+  params: Record<string, string>,
+  consumerSecret: string,
+  tokenSecret: string
+): Promise<Record<string, string>> {
+  const hops = await buildHops();
+  const failures: string[] = [];
+  let verdict: string | null = null;
+
+  for (const hop of hops) {
+    try {
+      const signed = await sign(
+        hop.method,
+        url,
+        { ...params, oauth_nonce: nonce(), oauth_timestamp: timestamp() },
+        consumerSecret,
+        tokenSecret
+      );
+
+      let res: Response;
+      if (hop.method === "POST") {
+        const body = Object.entries(signed)
+          .map(([k, v]) => `${percentEncode(k)}=${percentEncode(v)}`)
+          .join("&");
+        res = await guardedFetch(
+          hop.wrap(url),
+          { method: "POST", headers: { "Content-Type": "application/x-www-form-urlencoded" }, body },
+          hop.timeout
+        );
+      } else {
+        const query = Object.entries(signed)
+          .map(([k, v]) => `${percentEncode(k)}=${percentEncode(v)}`)
+          .join("&");
+        res = await guardedFetch(hop.wrap(`${url}?${query}`), { method: "GET" }, hop.timeout);
+      }
+
+      const text = await res.text();
+      const trimmed = text.trim();
+      const isHtml = trimmed.startsWith("<") || (res.headers.get("content-type") ?? "").includes("text/html");
+      if (isHtml || (!res.ok && !trimmed.includes("oauth_")) || trimmed === "") {
+        failures.push(`${hop.label}: HTTP ${res.status} relay garbage`);
+        continue;
+      }
+
+      const parsed = parseFormEncoded(text);
+      const problem = describeOAuthProblem(parsed);
+      if (problem) {
+        verdict = problem; // genuine Flickr verdict — stop hopping
+        break;
+      }
+      if (!res.ok) {
+        failures.push(`${hop.label}: HTTP ${res.status}`);
+        continue;
+      }
+      return parsed;
+    } catch (err) {
+      failures.push(`${hop.label}: ${err instanceof Error && err.message ? err.message : "unreachable"}`);
+    }
+  }
+
+  if (verdict) throw new Error(verdict);
+  throw new Error(
+    "Every transport hop failed: " +
+      failures.join(" · ") +
+      ". Public relays come and go — retry in a moment. For a guaranteed connection, run the bundled local proxy: node server/flickr-proxy.mjs"
+  );
+}
+
+/** POST transport — used for the multipart upload (local proxy first). */
 async function transportFetch(url: string, init: RequestInit): Promise<Response> {
   try {
     const direct = await guardedFetch(url, init, 30_000);
@@ -107,18 +213,30 @@ async function transportFetch(url: string, init: RequestInit): Promise<Response>
   } catch {
     /* direct is blocked by CORS — expected */
   }
-  let lastStatus = "";
-  for (const relay of RELAYS_POST) {
+  const failures: string[] = [];
+  if (await probeLocalProxy()) {
     try {
-      const res = await guardedFetch(relay(url), init, 60_000);
+      const res = await guardedFetch(`${LOCAL_PROXY}?url=${encodeURIComponent(url)}`, init, 90_000);
       if (usableStatus(res.status)) return res;
-      lastStatus = `HTTP ${res.status}`;
-    } catch {
-      lastStatus = "unreachable";
-      continue;
+      failures.push(`local proxy: HTTP ${res.status}`);
+    } catch (err) {
+      failures.push(`local proxy: ${err instanceof Error ? err.message : "unreachable"}`);
     }
   }
-  throw new Error(RELAY_DOWN_MSG + (lastStatus ? ` (${lastStatus})` : ""));
+  for (const hop of PUBLIC_HOPS.filter((h) => h.method === "POST")) {
+    try {
+      const res = await guardedFetch(hop.wrap(url), init, 90_000);
+      if (usableStatus(res.status)) return res;
+      failures.push(`${hop.label}: HTTP ${res.status}`);
+    } catch (err) {
+      failures.push(`${hop.label}: ${err instanceof Error ? err.message : "unreachable"}`);
+    }
+  }
+  throw new Error(
+    "Couldn't reach Flickr's upload endpoint: " +
+      failures.join(" · ") +
+      ". For a guaranteed connection, run the bundled local proxy: node server/flickr-proxy.mjs"
+  );
 }
 
 function lsGet(k: string): string | null {
@@ -273,42 +391,6 @@ function describeOAuthProblem(resp: Record<string, string>): string | null {
   return hint ? `${hint} (Flickr code: ${problem})` : `Flickr returned an OAuth error: ${problem}.`;
 }
 
-/**
- * OAuth 1.0a allows the token calls as signed GETs — and a signed GET whose
- * parameters live in the query string survives public CORS relays far better
- * than a POST body (several relays strip, gate or 403 POSTs by origin, which
- * is exactly the "HTTP 403" this flow hit).
- */
-async function getSigned(
-  url: string,
-  params: Record<string, string>,
-  consumerSecret: string,
-  tokenSecret: string
-): Promise<Record<string, string>> {
-  const signed = await sign("GET", url, params, consumerSecret, tokenSecret);
-  const query = Object.entries(signed)
-    .map(([k, v]) => `${percentEncode(k)}=${percentEncode(v)}`)
-    .join("&");
-  const res = await transportGet(`${url}?${query}`);
-  const text = await res.text();
-
-  // A public relay that's down or rate-limited returns its own HTML error page
-  // instead of Flickr's form-encoded reply — call that out, don't blame Flickr.
-  const trimmed = text.trim();
-  const isHtml = trimmed.startsWith("<") || (res.headers.get("content-type") ?? "").includes("text/html");
-  if (isHtml || (!res.ok && !trimmed.includes("oauth_"))) {
-    throw new Error(
-      `The connection relay returned an error page, not Flickr (HTTP ${res.status}). Public relays go down or rate-limit from time to time — wait a moment and press Connect again.`
-    );
-  }
-
-  const parsed = parseFormEncoded(text);
-  const problem = describeOAuthProblem(parsed);
-  if (problem) throw new Error(problem);
-  if (!res.ok) throw new Error(`Flickr responded with HTTP ${res.status}.`);
-  return parsed;
-}
-
 /* ------------------------------- Auth flow ------------------------------- */
 
 export function isAwaitingVerifier(): boolean {
@@ -326,14 +408,12 @@ export async function beginAuth(): Promise<{ authUrl: string }> {
   const secret = lsGet(LS.secret);
   if (!key || !secret) throw new Error("Enter your API key and secret first.");
 
-  const resp = await getSigned(
+  const resp = await signedFlickrRequest(
     REQUEST_TOKEN_URL,
     {
       oauth_callback: "oob",
       oauth_consumer_key: key,
-      oauth_nonce: nonce(),
       oauth_signature_method: "HMAC-SHA1",
-      oauth_timestamp: timestamp(),
       oauth_version: "1.0",
     },
     secret,
@@ -361,13 +441,11 @@ export async function completeAuth(verifier: string): Promise<{ user: string }> 
   if (!key || !secret) throw new Error("Enter your API key and secret first.");
   if (!reqToken || !reqSecret) throw new Error("Press “Connect to Flickr” first, then paste the code it shows.");
 
-  const resp = await getSigned(
+  const resp = await signedFlickrRequest(
     ACCESS_TOKEN_URL,
     {
       oauth_consumer_key: key,
-      oauth_nonce: nonce(),
       oauth_signature_method: "HMAC-SHA1",
-      oauth_timestamp: timestamp(),
       oauth_token: reqToken,
       oauth_verifier: verifier.trim(),
       oauth_version: "1.0",

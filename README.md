@@ -188,6 +188,9 @@ src/
 ├── types/        # FormState, Generation, …
 └── App.tsx
 
+server/
+└── flickr-proxy.mjs     # zero-dependency local transport proxy (guaranteed Flickr connection)
+
 worker/
 └── dashscope-proxy.js   # optional DashScope CORS relay
 ```
@@ -201,7 +204,18 @@ plate to your photostream as a public photo, renamed `IMG_xxxx` (random number),
 with a fitting title, a written editorial description, and 30 tags composed from
 the plate's own direction (muse, wardrobe, scene, lighting, camera, vibe).
 
-Everything runs **in the browser — no relay to deploy, nothing to set up.**
+**Guaranteed connection (recommended):** public CORS relays come and go. For a
+rock-solid connection, run the bundled zero-dependency local proxy once:
+
+```bash
+node server/flickr-proxy.mjs
+```
+
+The studio auto-detects it at `http://127.0.0.1:7427` and prefers it over every
+public relay — for connecting *and* uploading. It holds no credentials and only
+speaks to Flickr; the browser still does all the OAuth signing.
+
+Everything else runs **in the browser — no relay to deploy, nothing to set up.**
 Your API key and secret are stored only in your browser (localStorage). The
 secret is never transmitted: it's used locally to compute an OAuth 1.0a
 HMAC-SHA1 signature (via the Web Crypto API), and only that signature is sent
