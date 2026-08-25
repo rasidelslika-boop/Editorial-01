@@ -52,7 +52,7 @@ class BootBoundary extends React.Component<{ children: React.ReactNode }, { erro
                 margin: "0 0 14px",
               }}
             >
-              RSFASHIONPHOTO · Darkroom
+              Editorial-RSF · Darkroom
             </p>
             <h1 style={{ fontStyle: "italic", fontWeight: 600, fontSize: 27, margin: "0 0 12px" }}>
               The studio hit a snag

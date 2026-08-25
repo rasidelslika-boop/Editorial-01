@@ -10,9 +10,11 @@ import {
   clearCredentials,
   completeAuth,
   disconnect,
+  forceLocalProxy,
   getSession,
   hasCredentials,
   isAwaitingVerifier,
+  proxyProbeError,
   storeCredentials,
   storedKey,
 } from "../lib/flickr";
@@ -45,8 +47,13 @@ export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: (
   const [authUrl, setAuthUrl] = useState<string | null>(null);
   const [linkCopied, setLinkCopied] = useState(false);
   const [proxyUp, setProxyUp] = useState(false);
+  const [forcedProxy, setForcedProxy] = useState(false);
+  const [probeError, setProbeError] = useState("");
   const [scriptCopied, setScriptCopied] = useState(false);
   const [cmdCopied, setCmdCopied] = useState(false);
+
+  /** The lamp: green on a real probe, or when the user vouches for it. */
+  const proxyLive = proxyUp || forcedProxy;
 
   // Live status lamp for the bundled local proxy — re-probes while the dialog
   // is open so the moment it's running in Terminal, this turns green and the
@@ -56,7 +63,9 @@ export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: (
     let stopped = false;
     const probe = async () => {
       const up = await checkLocalProxy();
-      if (!stopped) setProxyUp(up);
+      if (stopped) return;
+      setProxyUp(up);
+      setProbeError(proxyProbeError());
     };
     void probe();
     const id = window.setInterval(probe, 3000);
@@ -65,6 +74,17 @@ export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: (
       window.clearInterval(id);
     };
   }, [open]);
+
+  /** Some browsers hide loopback servers from HTTPS pages entirely. */
+  const vouchForProxy = () => {
+    forceLocalProxy();
+    setForcedProxy(true);
+    setProbeError("");
+    toast("Local proxy enabled", {
+      description: "Requests will route through 127.0.0.1:7427. Make sure it's still running in Terminal.",
+      tone: "success",
+    });
+  };
 
   /**
    * ONE clipboard operation: the command embeds the whole script, so there's
@@ -272,7 +292,7 @@ export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: (
         ) : awaiting ? (
           <div>
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.25 }}>
-              <Label>Step 1 — authorise RSFASHIONPHOTO on Flickr</Label>
+              <Label>Step 1 — authorise Editorial-RSF on Flickr</Label>
 
               {authUrl ? (
                 <div className="flex flex-col gap-3 sm:flex-row">
@@ -390,17 +410,17 @@ export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: (
           <span
             className={cn(
               "flex items-center gap-1.5 rounded-sm border px-2 py-0.5 font-mono text-[9px] font-bold uppercase tracking-[0.14em]",
-              proxyUp
+              proxyLive
                 ? "border-gilt-500/60 bg-gilt-500/10 text-gilt-600 dark:text-gilt-300"
                 : "border-ink/20 text-ink/45 dark:border-paper/20 dark:text-paper/40"
             )}
           >
-            <span className={cn("h-1.5 w-1.5 rounded-full", proxyUp ? "animate-pulse-dot bg-gilt-500" : "bg-ink/30 dark:bg-paper/25")} aria-hidden />
-            {proxyUp ? "Running" : "Not running"}
+            <span className={cn("h-1.5 w-1.5 rounded-full", proxyLive ? "animate-pulse-dot bg-gilt-500" : "bg-ink/30 dark:bg-paper/25")} aria-hidden />
+            {proxyLive ? (forcedProxy && !proxyUp ? "Forced on" : "Running") : "Not running"}
           </span>
         </div>
 
-        {proxyUp ? (
+        {proxyLive ? (
           <p className="mt-2 font-mono text-[10px] leading-relaxed text-gilt-600 dark:text-gilt-300">
             The proxy is live on 127.0.0.1:7427 — press <span className="font-bold">Connect to Flickr</span> and it will route
             through it. Public relays are bypassed entirely.
@@ -445,6 +465,26 @@ export function FlickrDialog({ open, onClose, gen }: { open: boolean; onClose: (
             >
               {scriptCopied ? "Script copied ✓" : "Just want the script file? Copy it"}
             </button>
+
+            {/* The lamp can stay grey even when Terminal shows it running —
+                some browsers hide loopback servers from HTTPS pages. */}
+            <div className="mt-3 border-t border-dashed border-ink/15 pt-2.5 dark:border-paper/15">
+              {probeError ? (
+                <p className="font-mono text-[9px] leading-relaxed text-ink/40 dark:text-paper/35">
+                  Last check — {probeError}
+                </p>
+              ) : null}
+              <p className="mt-1 font-mono text-[10px] leading-relaxed text-ink/55 dark:text-paper/50">
+                Proxy running in Terminal but the lamp stays grey? Some browsers block this page from seeing 127.0.0.1 —{" "}
+                <button
+                  onClick={vouchForProxy}
+                  className="font-bold text-wine-700 underline-offset-4 hover:underline dark:text-gilt-300"
+                >
+                  force-enable it anyway
+                </button>
+                . Requests will route through it; if it's truly down, you'll get a fast, clear error.
+              </p>
+            </div>
           </>
         )}
       </div>

@@ -69,20 +69,36 @@ function usableStatus(status: number): boolean {
 }
 
 let localProxyState: boolean | null = null;
+let lastProbeError = "";
 
+/**
+ * Probe both localhost spellings. Chrome's Private Network Access spec
+ * blocks an HTTPS page from reaching 127.0.0.1 unless the proxy answers the
+ * preflight with Access-Control-Allow-Private-Network — the bundled proxy
+ * does; older copies without it still answer on "localhost" in some
+ * browsers, so both get a turn.
+ */
 async function doProbeLocalProxy(): Promise<boolean> {
-  try {
-    const ctrl = new AbortController();
-    const timer = setTimeout(() => ctrl.abort(), 1500);
-    const res = await fetch(`${LOCAL_PROXY}?url=${encodeURIComponent(REQUEST_TOKEN_URL)}`, {
-      method: "OPTIONS",
-      signal: ctrl.signal,
-    });
-    clearTimeout(timer);
-    return res.status === 204 || res.ok;
-  } catch {
-    return false;
+  lastProbeError = "";
+  for (const base of LOCAL_HOSTS) {
+    try {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 1800);
+      const res = await fetch(`${base}/proxy?url=${encodeURIComponent(REQUEST_TOKEN_URL)}`, {
+        method: "OPTIONS",
+        signal: ctrl.signal,
+      });
+      clearTimeout(timer);
+      if (res.status === 204 || res.ok) {
+        localProxyBase = base;
+        return true;
+      }
+      lastProbeError = `${base}: HTTP ${res.status}`;
+    } catch (err) {
+      lastProbeError = `${base}: ${err instanceof Error ? err.message : "unreachable"}`;
+    }
   }
+  return false;
 }
 
 /** One quick probe per session — is the bundled local proxy running? */
@@ -100,6 +116,21 @@ async function probeLocalProxy(): Promise<boolean> {
 export async function checkLocalProxy(): Promise<boolean> {
   localProxyState = await doProbeLocalProxy();
   return localProxyState;
+}
+
+/** The reason the last probe couldn't see the proxy ("" when it could). */
+export function proxyProbeError(): string {
+  return lastProbeError;
+}
+
+/**
+ * The user confirms the proxy is running in Terminal (browsers are allowed
+ * to hide localhost from HTTPS pages). Trust them — route through the proxy
+ * from here on; a truly dead proxy fails fast with a clear error anyway.
+ */
+export function forceLocalProxy(): void {
+  localProxyState = true;
+  lastProbeError = "";
 }
 
 interface Hop {
@@ -139,7 +170,7 @@ const PUBLIC_HOPS: Hop[] = [
 async function buildHops(): Promise<Hop[]> {
   if (await probeLocalProxy()) {
     return [
-      { label: "local proxy", method: "POST", wrap: (u) => `${LOCAL_PROXY}?url=${encodeURIComponent(u)}`, timeout: 25_000 },
+      { label: "local proxy", method: "POST", wrap: proxyUrl, timeout: 25_000 },
       ...PUBLIC_HOPS,
     ];
   }
@@ -234,7 +265,7 @@ async function transportFetch(url: string, init: RequestInit): Promise<Response>
   const failures: string[] = [];
   if (await probeLocalProxy()) {
     try {
-      const res = await guardedFetch(`${LOCAL_PROXY}?url=${encodeURIComponent(url)}`, init, 90_000);
+      const res = await guardedFetch(proxyUrl(url), init, 90_000);
       if (usableStatus(res.status)) return res;
       failures.push(`local proxy: HTTP ${res.status}`);
     } catch (err) {
@@ -631,7 +662,7 @@ const CURATED_TAGS = [
   "aigenerated",
   "aiart",
   "digitalart",
-  "rsfashionphoto",
+  "editorialrsf",
 ];
 
 function tagify(raw: string): string {

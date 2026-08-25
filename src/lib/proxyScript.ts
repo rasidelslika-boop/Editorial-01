@@ -6,7 +6,7 @@
  * .mjs (which has no exports) and the whole app dies at boot. A string
  * constant in source has no such failure mode.
  *
- * Keep `server/flickr-proxy.mjs` byte-identical to this.
+ * Keep `server/flickr-proxy.mjs` byte-identical to FLICKR_PROXY_SCRIPT.
  */
 
 /**
@@ -16,14 +16,14 @@
  */
 export function proxyInstallCommand(): string {
   return (
-    `mkdir -p ~/rsfashionphoto && cat > ~/rsfashionphoto/flickr-proxy.mjs <<'RSF_PROXY_EOF'\n` +
+    `mkdir -p ~/editorial-rsf && cat > ~/editorial-rsf/flickr-proxy.mjs <<'RSF_PROXY_EOF'\n` +
     FLICKR_PROXY_SCRIPT.trimEnd() +
-    `\nRSF_PROXY_EOF\nnode ~/rsfashionphoto/flickr-proxy.mjs`
+    `\nRSF_PROXY_EOF\nnode ~/editorial-rsf/flickr-proxy.mjs`
   );
 }
 
 export const FLICKR_PROXY_SCRIPT = `/**
- * RSFASHIONPHOTO — local Flickr transport proxy (zero dependencies).
+ * Editorial-RSF — local Flickr transport proxy (zero dependencies).
  *
  * This is the same trick every full-stack app builder uses: put the Flickr
  * call behind a server so CORS never applies. The browser keeps doing the
@@ -31,7 +31,7 @@ export const FLICKR_PROXY_SCRIPT = `/**
  * It stores NOTHING and speaks only to Flickr.
  *
  * Run (Node 18+):
- *   node server/flickr-proxy.mjs
+ *   node flickr-proxy.mjs
  *
  * Then in the app, press "Connect to Flickr" — it auto-detects the proxy at
  * http://127.0.0.1:7427 and prefers it over the public relays.
@@ -47,6 +47,9 @@ const server = http.createServer((req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
   res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
+  // Private Network Access — lets an HTTPS page (the studio) talk to this
+  // loopback server in Chrome & friends.
+  res.setHeader("Access-Control-Allow-Private-Network", "true");
   if (req.method === "OPTIONS") {
     res.writeHead(204);
     res.end();
@@ -74,7 +77,7 @@ const server = http.createServer((req, res) => {
       headers: {
         ...(req.headers["content-type"] ? { "content-type": String(req.headers["content-type"]) } : {}),
         ...(req.headers["content-length"] ? { "content-length": String(req.headers["content-length"]) } : {}),
-        "user-agent": "RSFASHIONPHOTO local transport",
+        "user-agent": "Editorial-RSF local transport",
       },
     },
     (upstream) => {
@@ -94,7 +97,7 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, "127.0.0.1", () => {
-  console.log("RSFASHIONPHOTO Flickr transport running");
+  console.log("Editorial-RSF Flickr transport running");
   console.log(\`  → \${TARGET}/proxy?url=<flickr-url>\`);
   console.log("  The studio detects this automatically — go press “Connect to Flickr”.");
 });

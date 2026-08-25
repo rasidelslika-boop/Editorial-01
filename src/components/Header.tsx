@@ -45,14 +45,14 @@ export function Header() {
   const exportProject = () => {
     downloadJson(
       {
-        app: "RSFASHIONPHOTO",
+        app: "Editorial-RSF",
         version: 1,
         exportedAt: new Date().toISOString(),
         currentSettings: form,
         lockedReferenceId: baseId,
         archive: generations,
       },
-      `rsfashionphoto-project-${new Date().toISOString().slice(0, 10)}.json`
+      `editorial-rsf-project-${new Date().toISOString().slice(0, 10)}.json`
     );
     toast("Project exported", { description: "Settings, prompts and the full archive as JSON.", tone: "success" });
   };
@@ -67,7 +67,7 @@ export function Header() {
             </span>
             <div className="min-w-0 leading-none">
               <p className="font-display wonk truncate text-lg font-semibold italic tracking-tight sm:text-xl md:text-2xl">
-                RS<span className="text-wine-700 dark:text-gilt-400">FASHIONPHOTO</span>
+                Editorial<span className="text-wine-700 dark:text-gilt-400">-RSF</span>
               </p>
               <p className="mt-1 hidden font-mono text-[9px] uppercase tracking-[0.28em] text-ink/45 dark:text-paper/40 sm:block">
                 Vol. 01 — The Lightbox Issue
