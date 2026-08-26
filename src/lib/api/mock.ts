@@ -250,7 +250,7 @@ async function developPlate(prompt: string, seed: number, width: number, height:
 
 export const studioProvider: ImageProvider = {
   id: "studio",
-  label: "RSFASHIONPHOTO studio engine",
+  label: "Editorial-RSF studio engine",
   mock: true,
 
   async generate(req, onProgress) {

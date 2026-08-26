@@ -174,7 +174,7 @@ const safeName = (name: string) => name.replace(/["'<>\\]/g, "_");
 
 const POPUP_HEAD = (title: string) =>
   `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">` +
-  `<title>RSFASHIONPHOTO · ${title}</title>` +
+  `<title>Editorial-RSF · ${title}</title>` +
   `<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@1,9..144,500&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">` +
   `<style>` +
   `*{box-sizing:border-box}body{margin:0;min-height:100vh;background:#121114;color:#efedea;` +
@@ -225,7 +225,7 @@ export function openDeliveryPopup(): Window | null {
       w,
       POPUP_HEAD("Preparing") +
         `<div class="scan"></div>` +
-        `<p class="kicker">RSFASHIONPHOTO · Darkroom</p>` +
+        `<p class="kicker">Editorial-RSF · Darkroom</p>` +
         `<h1>Developing your file…</h1>` +
         `<p class="meta">Fetching and grading the plate</p>` +
         POPUP_FOOT
@@ -254,7 +254,7 @@ export async function populateDeliveryPopup(
         writeDoc(
           tab,
           POPUP_HEAD("Unavailable") +
-            `<p class="kicker">RSFASHIONPHOTO · Darkroom</p>` +
+            `<p class="kicker">Editorial-RSF · Darkroom</p>` +
             `<h1>Couldn't fetch that plate</h1>` +
             `<p class="meta">The source bytes never arrived</p>` +
             `<p class="hint">The image may have expired (DashScope URLs live ~24h) or the network blocked it. Try regenerating the plate, then download again.</p>` +
@@ -276,7 +276,7 @@ export async function populateDeliveryPopup(
 
     const body =
       (isImg ? `<img id="plate" src="${dataUri}" alt="${name}">` : zipGlyph) +
-      `<p class="kicker">RSFASHIONPHOTO · Darkroom</p>` +
+      `<p class="kicker">Editorial-RSF · Darkroom</p>` +
       `<h1>${isImg ? "Plate developed" : "Session archived"}</h1>` +
       `<p class="fname">${name}</p>` +
       `<p class="meta">${isImg ? "graded plate" : "session archive"} · ${kb} KB</p>` +
@@ -438,7 +438,7 @@ export async function buildZipArchive(
   if (!saved) return null;
   const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
   const stamp = new Date().toISOString().slice(0, 10);
-  return { blob, filename: `rsfashionphoto-session-${stamp}.zip`, saved, failed };
+  return { blob, filename: `editorial-rsf-session-${stamp}.zip`, saved, failed };
 }
 
 /**

@@ -1,5 +1,5 @@
 /**
- * RSFASHIONPHOTO — DashScope / Alibaba MaaS relay (Cloudflare Worker)
+ * Editorial-RSF — DashScope / Alibaba MaaS relay (Cloudflare Worker)
  *
  * DashScope and the regional MaaS workspace gateways don't send browser CORS
  * headers, so a page can't call them directly. This tiny worker adds them.

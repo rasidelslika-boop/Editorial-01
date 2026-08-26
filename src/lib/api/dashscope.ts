@@ -399,7 +399,7 @@ async function generateOne(req: GenerateRequest, seed: number, onProgress?: Prog
             onProgress,
           });
           writeMemory({ hostIdx: idx, candidate: cand.id, route });
-          console.info(`[RSFASHIONPHOTO] Rendered via ${cand.id} (${route}) @ ${host}`);
+          console.info(`[Editorial-RSF] Rendered via ${cand.id} (${route}) @ ${host}`);
           return url;
         } catch (err) {
           if (err instanceof TerminalError) throw err;
@@ -410,7 +410,7 @@ async function generateOne(req: GenerateRequest, seed: number, onProgress?: Prog
           }
           if (err instanceof HttpError) {
             diag.push(`${cand.id}/${route}: ${err.message}`);
-            console.warn(`[RSFASHIONPHOTO] ${cand.id} via ${route} failed: ${err.message}`);
+            console.warn(`[Editorial-RSF] ${cand.id} via ${route} failed: ${err.message}`);
             if (err.status === 401 || err.status === 403) throw err;
             dead.add(`${idx}:${cand.id}:${route}`);
             if (err.status === 404 || err.status === 405 || err.status === 400 || err.status === 422) continue;
@@ -455,7 +455,7 @@ export function qwenProvider(engine: string): ImageProvider {
           if (err instanceof TerminalError) throw err;
           if (isNetwork(err)) {
             // Every host unreachable from the browser — curated stand-ins take over.
-            console.warn("[RSFASHIONPHOTO] DashScope unreachable from the browser — curated stand-ins take over.", err);
+            console.warn("[Editorial-RSF] DashScope unreachable from the browser — curated stand-ins take over.", err);
             const remaining = await studioProvider.generate({ ...req, curatedOnly: true }, onProgress);
             return [...images, ...remaining.slice(images.length).map((img) => ({ ...img, fallback: true }))];
           }

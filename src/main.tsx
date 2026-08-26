@@ -87,6 +87,32 @@ class BootBoundary extends React.Component<{ children: React.ReactNode }, { erro
               Reload the studio
             </button>
             <button
+              onClick={() => {
+                try {
+                  localStorage.removeItem("editorial-ai:v4");
+                  localStorage.removeItem("editorial-ai-ui:v1");
+                } catch {
+                  /* storage may already be unavailable */
+                }
+                location.reload();
+              }}
+              title="Clears the saved archive and settings in this browser, then reloads."
+              style={{
+                fontFamily: "'Space Mono', monospace",
+                fontSize: 11,
+                letterSpacing: ".08em",
+                textTransform: "uppercase",
+                background: "transparent",
+                color: "#c25a6e",
+                border: "1px solid #742033",
+                padding: "10px 18px",
+                cursor: "pointer",
+                marginRight: 10,
+              }}
+            >
+              Reset & reload
+            </button>
+            <button
               onClick={() => this.setState({ error: null })}
               style={{
                 fontFamily: "'Space Mono', monospace",
