@@ -1,0 +1,10 @@
+node_modules/
+.next/
+dist/
+build/
+*.log
+
+# Local secrets — never commit API keys
+.env
+.env.local
+.env.*.local
